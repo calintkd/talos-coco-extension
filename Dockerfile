@@ -54,6 +54,15 @@ RUN sed -i \
   's|^experimental_force_guest_pull = false|experimental_force_guest_pull = true|' \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml
 
+# Point SNP config to the SNP-experimental QEMU binary (the standard QEMU
+# does not support SEV-SNP VM launch)
+RUN sed -i \
+  's|/usr/local/bin/qemu-system-x86_64"|/usr/local/bin/qemu-system-x86_64-snp-experimental"|g' \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml && \
+  sed -i \
+  's|/usr/local/bin/qemu-system-x86_64"]|/usr/local/bin/qemu-system-x86_64-snp-experimental"]|g' \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
+
 # Debug: show what we have (visible in build log)
 RUN echo "=== Binaries ===" && ls -1 /kata-static/opt/kata/bin/ \
   && echo "=== Libexec ===" && ls -1 /kata-static/opt/kata/libexec/ \
@@ -116,10 +125,15 @@ COPY --from=kata-static \
   /kata-static/opt/kata/bin/cloud-hypervisor \
   /rootfs/usr/local/bin/cloud-hypervisor
 
-# QEMU (for kata-qemu-snp & kata-qemu-coco-dev runtime handlers)
+# qemu-system-x86_64 (for kata-qemu-coco-dev)
 COPY --from=kata-static \
   /kata-static/opt/kata/bin/qemu-system-x86_64 \
   /rootfs/usr/local/bin/qemu-system-x86_64
+
+# qemu-system-x86_64-snp-experimental (for kata-qemu-snp — standard QEMU doesn't support SEV-SNP)
+COPY --from=kata-static \
+  /kata-static/opt/kata/bin/qemu-system-x86_64-snp-experimental \
+  /rootfs/usr/local/bin/qemu-system-x86_64-snp-experimental
 
 # virtiofsd
 COPY --from=kata-static \
