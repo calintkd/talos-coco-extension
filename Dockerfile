@@ -1,10 +1,13 @@
 # =============================================================================
 # Talos System Extension: Confidential Containers (CoCo) with AMD SEV-SNP
 # =============================================================================
-# Two-stage Dockerfile:
+# Three-stage Dockerfile:
 #   1. Downloads + extracts the official kata-static release tarball and
 #      rewrites /opt/kata/ paths → /usr/local/ in the bundled config files
-#   2. Assembles a Talos system extension image (FROM scratch)
+#   2. Builds containerd-shim-kata-v2 from source (statically linked)
+#      because the tarball binary is dynamically linked against glibc,
+#      which does not exist on Talos's minimal filesystem
+#   3. Assembles a Talos system extension image (FROM scratch)
 #
 # Build:
 #   docker build --build-arg KATA_VERSION=3.27.0 \
@@ -16,6 +19,7 @@
 # =============================================================================
 
 ARG KATA_VERSION=3.27.0
+ARG GO_VERSION=1.24
 
 # =============================================================================
 # Stage 1: Download, extract, and patch paths in config files
@@ -50,16 +54,46 @@ RUN echo "=== Binaries ===" && ls -1 /kata-static/opt/kata/bin/ \
   && echo "=== Config files ===" && ls -1 /kata-static/opt/kata/share/defaults/kata-containers/*.toml
 
 # =============================================================================
-# Stage 2: Assemble the Talos system extension image (FROM scratch)
+# Stage 2: Build containerd-shim-kata-v2 from source (statically linked)
+# =============================================================================
+# The pre-compiled shim in the kata-static tarball is dynamically linked
+# against glibc (/lib64/ld-linux-x86-64.so.2), which does not exist on
+# Talos Linux. Building from source with CGO_ENABLED=0 produces a static
+# Go binary that works on Talos.
+# =============================================================================
+FROM golang:${GO_VERSION}-bookworm AS kata-shim
+
+ARG KATA_VERSION
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  git make gcc libc6-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch "${KATA_VERSION}" \
+  https://github.com/kata-containers/kata-containers.git \
+  /go/src/github.com/kata-containers/kata-containers
+
+WORKDIR /go/src/github.com/kata-containers/kata-containers/src/runtime
+
+RUN go mod download
+
+# Build with CGO_ENABLED=0 for a fully static binary
+RUN CGO_ENABLED=0 PREFIX=/usr/local make SKIP_GO_VERSION_CHECK=y containerd-shim-v2
+
+# Verify it's static
+RUN file containerd-shim-kata-v2 | grep -q "statically linked" && echo "OK: static binary" || echo "WARNING: not static"
+
+# =============================================================================
+# Stage 3: Assemble the Talos system extension image (FROM scratch)
 # =============================================================================
 FROM scratch AS extension
 
 # -- Extension manifest -------------------------------------------------------
 COPY manifest.yaml /manifest.yaml
 
-# -- containerd-shim-kata-v2 (pre-compiled in the static tarball) --------------
-COPY --from=kata-static \
-  /kata-static/opt/kata/bin/containerd-shim-kata-v2 \
+# -- containerd-shim-kata-v2 (built from source, statically linked) ------------
+COPY --from=kata-shim \
+  /go/src/github.com/kata-containers/kata-containers/src/runtime/containerd-shim-kata-v2 \
   /rootfs/usr/local/bin/containerd-shim-kata-v2
 
 # -- Hypervisors ---------------------------------------------------------------
