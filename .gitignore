@@ -20,3 +20,12 @@ talosconfig
 controlplane.yaml
 worker.yaml
 *.talosconfig
+
+# Talos
+talosconfig
+controlplane.yaml
+worker.yaml
+*.talosconfig
+
+talos-dev/
+talos-amd/
