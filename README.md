@@ -46,7 +46,7 @@ This extension replaces the standard `kata-deploy` Helm chart, which fails on Ta
 ```bash
 docker buildx build --platform linux/amd64 \
   --build-arg KATA_VERSION=3.27.0 \
-  -t ghcr.io/<your-org>/talos-coco-extension:v3.27.0 \
+  -t ghcr.io/<your-org>/talos-coco-extension:v1.0.0 \
   --push .
 ```
 
@@ -78,7 +78,7 @@ docker run --rm -t \
   ghcr.io/siderolabs/imager:v1.12.4 \
   installer \
   --arch amd64 \
-  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v3.27.0
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.0.0
 ```
 
 Push the installer to your registry:
@@ -106,7 +106,7 @@ docker run --rm -t \
   ghcr.io/siderolabs/imager:v1.12.4 \
   iso \
   --arch amd64 \
-  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v3.27.0
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.0.0
 ```
 
 ---

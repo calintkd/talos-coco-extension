@@ -10,8 +10,9 @@
 #   3. Assembles a Talos system extension image (FROM scratch)
 #
 # Build:
-#   docker build --build-arg KATA_VERSION=3.27.0 \
-#     -t ghcr.io/<org>/talos-coco-extension:v3.27.0 .
+#   docker buildx build --platform linux/amd64 \
+#     --build-arg KATA_VERSION=3.27.0 \
+#     -t ghcr.io/<org>/talos-coco-extension:v1.0.0 --push .
 #
 # Debug (list tarball contents):
 #   docker build --target kata-static -t kata-debug .
