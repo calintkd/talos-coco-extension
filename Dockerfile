@@ -1,29 +1,30 @@
 # =============================================================================
 # Talos System Extension: Confidential Containers (CoCo) with AMD SEV-SNP
 # =============================================================================
-# Simple two-stage Dockerfile that:
-#   1. Downloads + extracts the official kata-static release tarball
-#      (which already contains ALL pre-compiled binaries including the shim)
+# Two-stage Dockerfile:
+#   1. Downloads + extracts the official kata-static release tarball and
+#      rewrites /opt/kata/ paths → /usr/local/ in the bundled config files
 #   2. Assembles a Talos system extension image (FROM scratch)
 #
 # Build:
 #   docker build --build-arg KATA_VERSION=3.27.0 \
 #     -t ghcr.io/<org>/talos-coco-extension:v3.27.0 .
+#
+# Debug (list tarball contents):
+#   docker build --target kata-static -t kata-debug .
+#   docker run --rm kata-debug find /kata-static/opt/kata -type f | sort
 # =============================================================================
 
-# ---------------------------------------------------------------------------
-# Build args
-# ---------------------------------------------------------------------------
 ARG KATA_VERSION=3.27.0
 
 # =============================================================================
-# Stage 1: Download and extract kata-static release tarball
+# Stage 1: Download, extract, and patch paths in config files
 # =============================================================================
 FROM alpine:3.21 AS kata-static
 
 ARG KATA_VERSION
 
-RUN apk add --no-cache curl zstd tar
+RUN apk add --no-cache curl zstd tar sed
 
 # Download the official static release tarball
 RUN curl -fSL -o /tmp/kata-static.tar.zst \
@@ -32,12 +33,24 @@ RUN curl -fSL -o /tmp/kata-static.tar.zst \
   && tar --use-compress-program=unzstd -xf /tmp/kata-static.tar.zst -C /kata-static \
   && rm /tmp/kata-static.tar.zst
 
-# List what we got (useful for debugging during build)
-RUN echo "=== kata-static contents ===" \
-  && find /kata-static/opt/kata -type f | sort | head -200 || true
+# Rewrite /opt/kata/ paths → /usr/local/ in all official config files
+# so they match Talos extension filesystem layout
+RUN for f in /kata-static/opt/kata/share/defaults/kata-containers/*.toml; do \
+  sed -i \
+  -e 's|/opt/kata/bin/|/usr/local/bin/|g' \
+  -e 's|/opt/kata/libexec/|/usr/local/libexec/|g' \
+  -e 's|/opt/kata/share/|/usr/local/share/|g' \
+  "$f"; \
+  done
+
+# Debug: show what we have (visible in build log)
+RUN echo "=== Binaries ===" && ls -1 /kata-static/opt/kata/bin/ \
+  && echo "=== Libexec ===" && ls -1 /kata-static/opt/kata/libexec/ \
+  && echo "=== Guest assets ===" && ls -1 /kata-static/opt/kata/share/kata-containers/ \
+  && echo "=== Config files ===" && ls -1 /kata-static/opt/kata/share/defaults/kata-containers/*.toml
 
 # =============================================================================
-# Stage 2: Assemble the Talos system extension image
+# Stage 2: Assemble the Talos system extension image (FROM scratch)
 # =============================================================================
 FROM scratch AS extension
 
@@ -51,12 +64,12 @@ COPY --from=kata-static \
 
 # -- Hypervisors ---------------------------------------------------------------
 
-# Cloud Hypervisor (standard kata runtime)
+# Cloud Hypervisor (for standard "kata" runtime handler)
 COPY --from=kata-static \
   /kata-static/opt/kata/bin/cloud-hypervisor \
   /rootfs/usr/local/bin/cloud-hypervisor
 
-# QEMU (for CoCo SNP & coco-dev runtimes)
+# QEMU (for kata-qemu-snp & kata-qemu-coco-dev runtime handlers)
 COPY --from=kata-static \
   /kata-static/opt/kata/bin/qemu-system-x86_64 \
   /rootfs/usr/local/bin/qemu-system-x86_64
@@ -68,54 +81,54 @@ COPY --from=kata-static \
 
 # -- Guest kernels -------------------------------------------------------------
 
-# Standard guest kernel (for cloud-hypervisor / coco-dev)
+# vmlinux (uncompressed, for cloud-hypervisor)
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-containers/vmlinux.container \
   /rootfs/usr/local/share/kata-containers/vmlinux.container
 
-# SNP-specific guest kernel (for kata-qemu-snp)
-# NOTE: If vmlinuz-snp.container does not exist in your release, the build
-# will fail here. Some releases use a single vmlinuz.container for all QEMU
-# variants — in that case, change the source path below.
+# vmlinuz (compressed, for QEMU — used by both SNP and coco-dev)
 COPY --from=kata-static \
-  /kata-static/opt/kata/share/kata-containers/vmlinuz-snp.container \
-  /rootfs/usr/local/share/kata-containers/vmlinuz-snp.container
+  /kata-static/opt/kata/share/kata-containers/vmlinuz.container \
+  /rootfs/usr/local/share/kata-containers/vmlinuz.container
 
 # -- Guest images / initrd ----------------------------------------------------
 
-# Standard guest root filesystem image (for cloud-hypervisor / coco-dev)
+# Standard guest image (for cloud-hypervisor "kata" handler)
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-containers/kata-containers.img \
   /rootfs/usr/local/share/kata-containers/kata-containers.img
 
-# Confidential guest initrd (for kata-qemu-snp — contains attestation agent)
-# NOTE: The exact filename varies across releases. Common names:
-#   - kata-containers-initrd-confidential.img
-#   - kata-containers-initrd.img
-# Adjust if your release uses a different name.
+# Confidential guest image (for kata-qemu-coco-dev — dm-verity protected)
+COPY --from=kata-static \
+  /kata-static/opt/kata/share/kata-containers/kata-containers-confidential.img \
+  /rootfs/usr/local/share/kata-containers/kata-containers-confidential.img
+
+# Confidential initrd (for kata-qemu-snp — contains attestation agent)
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-containers/kata-containers-initrd-confidential.img \
   /rootfs/usr/local/share/kata-containers/kata-containers-initrd-confidential.img
 
-# -- OVMF firmware (for SEV-SNP) -----------------------------------------------
-COPY --from=kata-static \
-  /kata-static/opt/kata/share/kata-containers/OVMF.fd \
-  /rootfs/usr/local/share/kata-containers/OVMF.fd
-
-# -- QEMU firmware blobs (required by qemu-system-x86_64) ---------------------
+# -- QEMU firmware blobs (required by qemu-system-x86_64 at runtime) ----------
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-qemu/ \
   /rootfs/usr/local/share/kata-qemu/
 
-# -- Configuration files -------------------------------------------------------
-COPY rootfs/usr/local/share/kata-containers/configuration.toml \
-  /rootfs/usr/local/share/kata-containers/configuration.toml
+# -- Official configuration files (path-patched in Stage 1) --------------------
 
-COPY rootfs/usr/local/share/kata-containers/configuration-qemu-snp.toml \
+# kata-qemu-snp: AMD SEV-SNP production
+COPY --from=kata-static \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml \
   /rootfs/usr/local/share/kata-containers/configuration-qemu-snp.toml
 
-COPY rootfs/usr/local/share/kata-containers/configuration-qemu-coco-dev.toml \
+# kata-qemu-coco-dev: Development/testing without TEE hardware
+COPY --from=kata-static \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml \
   /rootfs/usr/local/share/kata-containers/configuration-qemu-coco-dev.toml
+
+# kata (cloud-hypervisor): Standard non-confidential fallback
+COPY --from=kata-static \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-clh.toml \
+  /rootfs/usr/local/share/kata-containers/configuration.toml
 
 # -- Containerd CRI drop-in configuration -------------------------------------
 COPY rootfs/etc/cri/conf.d/20-coco.part \
