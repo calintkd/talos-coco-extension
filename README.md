@@ -297,7 +297,7 @@ If missing:
 ## File Structure
 
 ```
-talos-extension/
+talos-coco-extension/
 ├── Dockerfile                          # Multi-stage build
 ├── manifest.yaml                       # Talos extension metadata
 ├── machine-config-patch.yaml           # Talos machine config example
