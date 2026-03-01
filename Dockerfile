@@ -174,6 +174,11 @@ COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-qemu/ \
   /rootfs/usr/local/share/kata-qemu/
 
+# -- SNP-experimental QEMU firmware blobs (kvmvapic.bin, efi-virtio.rom, etc.) -
+COPY --from=kata-static \
+  /kata-static/opt/kata/share/kata-qemu-snp-experimental/ \
+  /rootfs/usr/local/share/kata-qemu-snp-experimental/
+
 # -- OVMF firmware (required by kata-qemu-snp for SEV-SNP) --------------------
 # Contains AMDSEV.fd (AMD SEV-SNP) and OVMF.fd (standard UEFI)
 COPY --from=kata-static \
