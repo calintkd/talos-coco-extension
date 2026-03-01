@@ -160,6 +160,13 @@ COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-qemu/ \
   /rootfs/usr/local/share/kata-qemu/
 
+# -- OVMF firmware (required by kata-qemu-snp for SEV-SNP) --------------------
+# Contains AMDSEV.fd (AMD SEV-SNP) and OVMF.fd (standard UEFI)
+COPY --from=kata-static \
+  /kata-static/opt/kata/share/ovmf/ \
+  /rootfs/usr/local/share/ovmf/
+
+
 # -- Official configuration files (path-patched in Stage 1) --------------------
 
 # kata-qemu-snp: AMD SEV-SNP production
