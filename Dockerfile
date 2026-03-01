@@ -77,8 +77,14 @@ WORKDIR /go/src/github.com/kata-containers/kata-containers/src/runtime
 
 RUN go mod download
 
-# Build with CGO_ENABLED=0 for a fully static binary
-RUN CGO_ENABLED=0 PREFIX=/usr/local make SKIP_GO_VERSION_CHECK=y containerd-shim-v2
+# Build with CGO_ENABLED=0 and override -buildmode=pie → -buildmode=exe
+# The Makefile defaults to -buildmode=pie which creates a dynamically linked PIE
+# binary (requires /lib64/ld-linux-x86-64.so.2 which doesn't exist on Talos).
+# Using -buildmode=exe produces a truly static, self-contained binary.
+RUN CGO_ENABLED=0 PREFIX=/usr/local make \
+  BUILDFLAGS="-buildmode=exe -mod=vendor" \
+  SKIP_GO_VERSION_CHECK=y \
+  containerd-shim-v2
 
 # Verify it's static
 RUN file containerd-shim-kata-v2 | grep -q "statically linked" && echo "OK: static binary" || echo "WARNING: not static"
