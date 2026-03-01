@@ -1,0 +1,67 @@
+# =============================================================================
+# Kata Containers configuration for standard cloud-hypervisor runtime
+# =============================================================================
+# Used by runtime handler: kata
+# Hypervisor: Cloud Hypervisor (non-confidential)
+#
+# This is the same configuration as the official Sidero Labs kata-containers
+# extension. Included as a fallback / compatibility runtime handler.
+# =============================================================================
+
+[hypervisor.clh]
+path = "/usr/local/bin/cloud-hypervisor"
+kernel = "/usr/local/share/kata-containers/vmlinux.container"
+image = "/usr/local/share/kata-containers/kata-containers.img"
+
+# Rootfs type
+rootfs_type = "ext4"
+
+# SELinux
+disable_selinux = false
+disable_guest_selinux = true
+
+# Annotations
+enable_annotations = ["enable_iommu", "virtio_fs_extra_args", "kernel_params"]
+
+# Valid paths
+valid_hypervisor_paths = ["/usr/local/bin/cloud-hypervisor"]
+
+# Kernel parameters
+kernel_params = "cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1"
+
+# vCPUs
+default_vcpus = 1
+default_maxvcpus = 0
+
+# Memory
+default_memory = 2048
+default_maxmemory = 0
+
+# Shared filesystem — virtio-fs
+shared_fs = "virtio-fs"
+
+# virtiofsd
+virtio_fs_daemon = "/usr/local/libexec/virtiofsd"
+valid_virtio_fs_daemon_paths = ["/usr/local/libexec/virtiofsd"]
+virtio_fs_cache_size = 0
+virtio_fs_queue_size = 1024
+virtio_fs_extra_args = ["--thread-pool-size=1", "--announce-submounts"]
+virtio_fs_cache = "auto"
+
+# Block device driver
+block_device_driver = "virtio-blk"
+
+[agent.kata]
+dial_timeout = 45
+
+[runtime]
+internetworking_model = "tcfilter"
+disable_guest_seccomp = true
+sandbox_cgroup_only = false
+static_sandbox_resource_mgmt = false
+sandbox_bind_mounts = []
+vfio_mode = "guest-kernel"
+disable_guest_empty_dir = false
+experimental = []
+create_container_timeout = 60
+dan_conf = "/run/kata-containers/dans"

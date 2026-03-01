@@ -1,0 +1,25 @@
+# =============================================================================
+# Talos machine configuration patch — CoCo extension
+# =============================================================================
+# Apply with:
+#   talosctl apply-config --nodes <IP> --patch @machine-config-patch.yaml
+#
+# Or merge into your machine config before generating:
+#   talosctl gen config ... --config-patch @machine-config-patch.yaml
+# =============================================================================
+
+machine:
+  install:
+    extensions:
+      - image: ghcr.io/<your-org>/talos-coco-extension:v3.27.0
+  # Optionally label the node for RuntimeClass scheduling
+  nodeLabels:
+    coco.confidentialcontainers.org/snp: "true"    # only on SEV-SNP bare-metal
+    # coco.confidentialcontainers.org/coco-dev: "true"  # for VM test nodes
+
+  # Required: KVM device access for QEMU/Cloud-Hypervisor
+  # Talos exposes /dev/kvm by default, but if you need /dev/sev for SNP:
+  kernel:
+    modules:
+      - name: kvm_amd
+      - name: ccp         # AMD Cryptographic Co-processor (provides /dev/sev)
