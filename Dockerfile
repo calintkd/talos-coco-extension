@@ -47,6 +47,12 @@ RUN for f in /kata-static/opt/kata/share/defaults/kata-containers/*.toml; do \
   "$f"; \
   done
 
+# Enable guest-pull in coco-dev config: with shared_fs=none, the kata-agent
+# must pull container images inside the guest VM
+RUN sed -i \
+  's|^experimental_force_guest_pull = false|experimental_force_guest_pull = true|' \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml
+
 # Debug: show what we have (visible in build log)
 RUN echo "=== Binaries ===" && ls -1 /kata-static/opt/kata/bin/ \
   && echo "=== Libexec ===" && ls -1 /kata-static/opt/kata/libexec/ \
