@@ -48,11 +48,12 @@ RUN for f in /kata-static/opt/kata/share/defaults/kata-containers/*.toml; do \
   "$f"; \
   done
 
-# Enable guest-pull in coco-dev config: with shared_fs=none, the kata-agent
-# must pull container images inside the guest VM
+# Enable guest-pull in coco-dev and SNP configs: with shared_fs=none, the
+# kata-agent must pull container images inside the guest VM
 RUN sed -i \
   's|^experimental_force_guest_pull = false|experimental_force_guest_pull = true|' \
-  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
 
 # Point SNP config to the SNP-experimental QEMU binary (the standard QEMU
 # does not support SEV-SNP VM launch)
