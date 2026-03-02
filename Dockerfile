@@ -206,3 +206,9 @@ COPY --from=kata-static \
 # -- Containerd CRI drop-in configuration -------------------------------------
 COPY rootfs/etc/cri/conf.d/20-coco.part \
   /rootfs/etc/cri/conf.d/20-coco.part
+
+# -- Symlink /opt/kata → /usr/local -------------------------------------------
+# QEMU binaries have /opt/kata/ paths compiled in (e.g., data directory for ROM
+# files, firmware paths). Since Talos extensions install to /usr/local/, this
+# symlink makes all compiled-in paths work transparently.
+RUN mkdir -p /rootfs/opt && ln -sf /usr/local /rootfs/opt/kata
