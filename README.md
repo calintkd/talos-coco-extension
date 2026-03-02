@@ -2,6 +2,18 @@
 
 A Talos Linux system extension that provides [Confidential Containers (CoCo)](https://github.com/confidential-containers) runtime support via [Kata Containers](https://github.com/kata-containers/kata-containers), with full AMD SEV-SNP support on bare-metal hardware.
 
+### How This Compares to Standard CoCo
+
+On standard Linux distributions (Ubuntu, RHEL), CoCo is deployed via the [CoCo operator Helm chart](https://github.com/confidential-containers/operator), which runs a DaemonSet that extracts Kata binaries to `/opt/kata/` at runtime. This extension is the **Talos-native equivalent** — it packages the exact same Kata components (including `qemu-system-x86_64-snp-experimental`) but as an immutable system extension instead.
+
+|                     | Ubuntu + CoCo Operator                | Talos + This Extension                         |
+| ------------------- | ------------------------------------- | ---------------------------------------------- |
+| **Install method**  | DaemonSet extracts tarball at runtime | System extension baked into initramfs          |
+| **Binary location** | `/opt/kata/bin/`                      | `/usr/local/bin/` (symlinked from `/opt/kata`) |
+| **Shim**            | Dynamically linked (uses host glibc)  | Statically rebuilt (Talos has no glibc)        |
+| **QEMU binary**     | `qemu-system-x86_64-snp-experimental` | Same binary                                    |
+| **Filesystem**      | Writable host OS                      | Immutable rootfs                               |
+
 ## Overview
 
 This extension packages Kata Containers 3.27.0 into a Talos system extension, providing:
@@ -120,6 +132,73 @@ spec:
       image: busybox:latest
       command:
         ["sh", "-c", "echo 'Hello from SEV-SNP!' && uname -a && sleep 3600"]
+```
+
+### 7. Verify SEV-SNP Attestation
+
+Deploy an Ubuntu pod and verify attestation with [snpguest](https://github.com/virtee/snpguest):
+
+```bash
+# Deploy Ubuntu on kata-qemu-snp
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secure-ubuntu
+  annotations:
+    io.containerd.cri.v1.images/unpack: "false"
+spec:
+  runtimeClassName: kata-qemu-snp
+  containers:
+  - name: ubuntu
+    image: ubuntu:24.04
+    command: ["/bin/sleep", "infinity"]
+EOF
+
+# Wait for pod to be Running, then exec in
+kubectl exec -it secure-ubuntu -- /bin/bash
+```
+
+Inside the pod:
+
+```bash
+# Verify SEV-SNP is active in guest kernel
+dmesg | grep -i sev
+# Expected: "Memory Encryption Features active: AMD SEV SEV-ES SEV-SNP"
+# Expected: "SEV: SNP running at VMPL0."
+
+# Create the SEV guest device node
+SNP_MAJOR=$(cat /sys/devices/virtual/misc/sev-guest/dev | awk -F: '{print $1}')
+SNP_MINOR=$(cat /sys/devices/virtual/misc/sev-guest/dev | awk -F: '{print $2}')
+mknod -m 600 /dev/sev-guest c "${SNP_MAJOR}" "${SNP_MINOR}"
+
+# Install snpguest
+apt-get update && apt-get install -y curl ca-certificates
+curl -LO https://github.com/virtee/snpguest/releases/download/v0.10.0/snpguest
+chmod +x snpguest
+
+# Generate attestation report from AMD hardware
+./snpguest report report.bin request-file.txt --random
+
+# Fetch AMD certificate chain and verify
+./snpguest fetch ca -r report.bin pem ./
+./snpguest fetch vcek pem ./ ./report.bin
+./snpguest verify certs ./
+./snpguest verify attestation ./ ./report.bin
+```
+
+Expected output:
+
+```
+The AMD ARK was self-signed!
+The AMD ASK was signed by the AMD ARK!
+The VCEK was signed by the AMD ASK!
+
+Reported TCB Boot Loader from certificate matches the attestation report.
+Reported TCB TEE from certificate matches the attestation report.
+Reported TCB SNP from certificate matches the attestation report.
+Reported TCB Microcode from certificate matches the attestation report.
+VEK signed the Attestation Report!
 ```
 
 ---
@@ -251,3 +330,16 @@ This is a warning, not an error. It occurs when the host CPU doesn't support the
 - **Extension version**: `v1.0.0` (independent from upstream Kata)
 - **Kata Containers base**: `3.27.0`
 - **Talos compatibility**: `>= v1.9.0`
+
+> **Note:** Configuration TOML files (e.g., `configuration-qemu-snp.toml`) are extracted from the official Kata release tarball during the Docker build, with paths rewritten from `/opt/kata/` to `/usr/local/` and guest-pull enabled.
+
+## References
+
+- [Talos System Extensions Guide](https://www.talos.dev/latest/talos-guides/configuration/system-extensions/)
+- [Official kata-containers extension](https://github.com/siderolabs/extensions/tree/main/container-runtime/kata-containers)
+- [Kata Containers Releases](https://github.com/kata-containers/kata-containers/releases)
+- [Confidential Containers Project](https://confidentialcontainers.org/)
+- [CoCo Operator (Helm chart)](https://github.com/confidential-containers/operator)
+- [CoCo Quickstart Guide](https://confidentialcontainers.org/docs/getting-started/)
+- [AMD SEV-SNP Documentation](https://www.amd.com/en/developer/sev.html)
+- [snpguest — AMD SEV-SNP attestation tool](https://github.com/virtee/snpguest)
