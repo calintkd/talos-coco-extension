@@ -30,16 +30,16 @@ This extension packages Kata Containers 3.27.0 into a Talos system extension, pr
 ┌─────────────────────────────────────────────────────────────────┐
 │  Talos Linux Host (immutable)                                   │
 │                                                                 │
-│  containerd ──► containerd-shim-kata-v2 ──► QEMU / CLH         │
+│  containerd ──► containerd-shim-kata-v2 ──► QEMU / CLH          │
 │       │                    │                    │               │
 │  CRI config          Kata config         Guest VM               │
-│  (20-coco.part)   (configuration-*.toml)  ┌────────────┐       │
-│                                           │ Guest      │       │
-│                                           │ Kernel     │       │
-│                                           │ + initrd   │       │
-│                                           │ + OVMF     │       │
-│  /opt/kata → /usr/local (symlink)         │ (SEV-SNP)  │       │
-│                                           └────────────┘       │
+│  (20-coco.part)   (configuration-*.toml)  ┌────────────┐        │
+│                                           │ Guest      │        │
+│                                           │ Kernel     │        │
+│                                           │ + initrd   │        │
+│                                           │ + OVMF     │        │
+│  /opt/kata → /usr/local (symlink)         │ (SEV-SNP)  │        │
+│                                           └────────────┘        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
