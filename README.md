@@ -4,9 +4,9 @@ A Talos Linux system extension that provides [Confidential Containers (CoCo)](ht
 
 ### How This Compares to Standard CoCo
 
-On standard Linux distributions (Ubuntu, RHEL), CoCo is deployed via the [CoCo operator Helm chart](https://github.com/confidential-containers/operator), which runs a DaemonSet that extracts Kata binaries to `/opt/kata/` at runtime. This extension is the **Talos-native equivalent** — it packages the exact same Kata components (including `qemu-system-x86_64-snp-experimental`) but as an immutable system extension instead.
+On standard Linux distributions (Ubuntu, RHEL), CoCo is deployed via the [CoCo Helm Charts](https://github.com/confidential-containers/charts), which deploy a DaemonSet that extracts Kata binaries to `/opt/kata/` at runtime. This extension is the **Talos-native equivalent** — it packages the exact same Kata components (including `qemu-system-x86_64-snp-experimental`) but as an immutable system extension instead.
 
-|                     | Ubuntu + CoCo Operator                | Talos + This Extension                         |
+|                     | Ubuntu + CoCo Helm Charts             | Talos + This Extension                         |
 | ------------------- | ------------------------------------- | ---------------------------------------------- |
 | **Install method**  | DaemonSet extracts tarball at runtime | System extension baked into initramfs          |
 | **Binary location** | `/opt/kata/bin/`                      | `/usr/local/bin/` (symlinked from `/opt/kata`) |
@@ -339,7 +339,7 @@ This is a warning, not an error. It occurs when the host CPU doesn't support the
 - [Official kata-containers extension](https://github.com/siderolabs/extensions/tree/main/container-runtime/kata-containers)
 - [Kata Containers Releases](https://github.com/kata-containers/kata-containers/releases)
 - [Confidential Containers Project](https://confidentialcontainers.org/)
-- [CoCo Operator (Helm chart)](https://github.com/confidential-containers/operator)
+- [CoCo Helm Charts](https://github.com/confidential-containers/charts) (official deployment method)
 - [CoCo Quickstart Guide](https://confidentialcontainers.org/docs/getting-started/)
 - [AMD SEV-SNP Documentation](https://www.amd.com/en/developer/sev.html)
 - [snpguest — AMD SEV-SNP attestation tool](https://github.com/virtee/snpguest)
