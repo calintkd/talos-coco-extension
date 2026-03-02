@@ -69,6 +69,9 @@ RUN echo "=== Binaries ===" && ls -1 /kata-static/opt/kata/bin/ \
   && echo "=== Guest assets ===" && ls -1 /kata-static/opt/kata/share/kata-containers/ \
   && echo "=== Config files ===" && ls -1 /kata-static/opt/kata/share/defaults/kata-containers/*.toml
 
+# Create /opt/kata → /usr/local symlink for COPY into scratch stage
+RUN mkdir -p /tmp/opt-symlink/opt && ln -sf /usr/local /tmp/opt-symlink/opt/kata
+
 # =============================================================================
 # Stage 2: Build containerd-shim-kata-v2 from source (statically linked)
 # =============================================================================
