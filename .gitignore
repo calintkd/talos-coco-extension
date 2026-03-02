@@ -21,11 +21,6 @@ controlplane.yaml
 worker.yaml
 *.talosconfig
 
-# Talos
-talosconfig
-controlplane.yaml
-worker.yaml
-*.talosconfig
-
+# Environment-specific config directories
 talos-dev/
 talos-amd/

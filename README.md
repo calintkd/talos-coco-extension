@@ -1,47 +1,46 @@
-# Talos System Extension: Confidential Containers (CoCo)
+# Talos CoCo Extension — Confidential Containers for Talos Linux
 
-A native **Talos Linux system extension** that packages [Confidential Containers (CoCo)](https://confidentialcontainers.org/) for bare-metal and VM environments, with full AMD SEV-SNP support.
+A Talos Linux system extension that provides [Confidential Containers (CoCo)](https://github.com/confidential-containers) runtime support via [Kata Containers](https://github.com/kata-containers/kata-containers), with full AMD SEV-SNP support on bare-metal hardware.
 
-This extension replaces the standard `kata-deploy` Helm chart, which fails on Talos's immutable root filesystem. All binaries are pre-installed into Talos-approved read-only paths.
+## Overview
 
-## What's Included
+This extension packages Kata Containers 3.27.0 into a Talos system extension, providing:
 
-| Component                  | Path on Talos Host                                                         |
-| -------------------------- | -------------------------------------------------------------------------- |
-| `containerd-shim-kata-v2`  | `/usr/local/bin/` _(built from source, statically linked)_                 |
-| `cloud-hypervisor`         | `/usr/local/bin/`                                                          |
-| `qemu-system-x86_64`       | `/usr/local/bin/`                                                          |
-| `virtiofsd`                | `/usr/local/libexec/`                                                      |
-| Guest kernel (compressed)  | `/usr/local/share/kata-containers/vmlinuz.container`                       |
-| Guest kernel (standard)    | `/usr/local/share/kata-containers/vmlinux.container`                       |
-| Guest image (standard)     | `/usr/local/share/kata-containers/kata-containers.img`                     |
-| Guest image (confidential) | `/usr/local/share/kata-containers/kata-containers-confidential.img`        |
-| Confidential initrd        | `/usr/local/share/kata-containers/kata-containers-initrd-confidential.img` |
-| QEMU firmware blobs        | `/usr/local/share/kata-qemu/`                                              |
+| Runtime Handler      | Use Case                  | Hypervisor              | Confidential   |
+| -------------------- | ------------------------- | ----------------------- | -------------- |
+| `kata-qemu-snp`      | AMD SEV-SNP production    | QEMU (SNP-experimental) | ✅             |
+| `kata-qemu-coco-dev` | CoCo dev/test (no TEE HW) | QEMU                    | ✅ (simulated) |
+| `kata`               | Standard VM isolation     | Cloud Hypervisor        | ❌             |
 
-### Registered Runtime Handlers
+### Architecture
 
-| Handler              | Hypervisor       | Config File                        | Use Case                                            |
-| -------------------- | ---------------- | ---------------------------------- | --------------------------------------------------- |
-| `kata-qemu-snp`      | QEMU             | `configuration-qemu-snp.toml`      | **Production** AMD SEV-SNP confidential containers  |
-| `kata-qemu-coco-dev` | QEMU             | `configuration-qemu-coco-dev.toml` | **Dev/Test** without TEE hardware (guest-pull mode) |
-| `kata`               | cloud-hypervisor | `configuration.toml`               | Standard Kata (non-confidential, virtio-fs)         |
-
----
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Talos Linux Host (immutable)                                   │
+│                                                                 │
+│  containerd ──► containerd-shim-kata-v2 ──► QEMU / CLH         │
+│       │                    │                    │               │
+│  CRI config          Kata config         Guest VM               │
+│  (20-coco.part)   (configuration-*.toml)  ┌────────────┐       │
+│                                           │ Guest      │       │
+│                                           │ Kernel     │       │
+│                                           │ + initrd   │       │
+│                                           │ + OVMF     │       │
+│  /opt/kata → /usr/local (symlink)         │ (SEV-SNP)  │       │
+│                                           └────────────┘       │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Prerequisites
 
-- **Docker** with `buildx` (for cross-platform building on Apple Silicon)
-- **A container registry** you can push to (e.g., `ghcr.io`, Docker Hub)
-- **[crane](https://github.com/google/go-containerregistry/tree/main/cmd/crane)** — for pushing installer images (`brew install crane`)
-- **Talos CLI** (`talosctl`) v1.12.4+
-- **Talos `imager`** (Docker image `ghcr.io/siderolabs/imager:v1.12.4`)
+- Docker with Buildx support
+- [`crane`](https://github.com/google/go-containerregistry/tree/main/cmd/crane) for pushing images
+- `talosctl` CLI
+- Container registry access (e.g., `ghcr.io`)
 
----
+## Quick Start
 
-## Step 1: Build & Push the Extension Image
-
-> **Important:** If building on Apple Silicon (M1/M2/M3 Mac), you must use `--platform linux/amd64` since Talos nodes run x86_64.
+### 1. Build & Push the Extension
 
 ```bash
 docker buildx build --platform linux/amd64 \
@@ -50,317 +49,205 @@ docker buildx build --platform linux/amd64 \
   --push .
 ```
 
-The Dockerfile has three stages:
-
-1. **kata-static** — Downloads the official Kata release tarball, rewrites `/opt/kata/` paths to `/usr/local/`, and enables `experimental_force_guest_pull` for the coco-dev config
-2. **kata-shim** — Builds `containerd-shim-kata-v2` from source with `CGO_ENABLED=0 -buildmode=exe` for a statically-linked binary (the pre-compiled tarball binary is dynamically linked against glibc, which Talos doesn't have)
-3. **extension** — Assembles the final `FROM scratch` Talos extension image
-
-> **Debug build:** To inspect what's in the kata-static tarball:
->
-> ```bash
-> docker build --target kata-static -t kata-debug .
-> docker run --rm kata-debug find /kata-static/opt/kata -type f | sort
-> ```
-
----
-
-## Step 2: Build a Custom Talos Installer
-
-Use the Talos `imager` to create a custom installer image that includes your extension.
-
-### Option A: Custom Installer Image (for existing clusters — upgrades)
+### 2. Build & Push the Installer
 
 ```bash
+# Build installer with the extension baked in
 docker run --rm -t \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.12.4 \
-  installer \
+  ghcr.io/siderolabs/imager:v1.12.4 installer \
   --arch amd64 \
   --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.0.0
-```
 
-Push the installer to your registry:
-
-```bash
+# Push to registry
 crane push _out/installer-amd64.tar ghcr.io/<your-org>/talos-installer:v1.12.4-coco
 ```
 
-> **Note:** Make sure the package is public in your registry so Talos nodes can pull it.
-
-Then upgrade your existing node:
-
-```bash
-talosctl upgrade \
-  --nodes <NODE_IP> \
-  --image ghcr.io/<your-org>/talos-installer:v1.12.4-coco
-```
-
-### Option B: Custom ISO (for new installations)
+### 3. Build ISO (for bare-metal install)
 
 ```bash
 docker run --rm -t \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.12.4 \
-  iso \
+  ghcr.io/siderolabs/imager:v1.12.4 iso \
   --arch amd64 \
   --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.0.0
+# Output: _out/metal-amd64.iso
 ```
 
----
-
-## Step 3: Verify Extension is Loaded
+### 4. Generate Config & Deploy
 
 ```bash
-talosctl get extensions --nodes <NODE_IP>
-# Should show: coco-kata-containers  3.27.0
+# Create a config patch (see machine-config-patch.yaml for template)
+talosctl gen config my-cluster https://<NODE-IP>:6443 \
+  --output my-cluster/ \
+  --output-types controlplane,talosconfig \
+  --config-patch @machine-config-patch.yaml
 
-# Verify the containerd config was merged
-talosctl read /etc/cri/conf.d/20-coco.part --nodes <NODE_IP>
+# Apply to node in maintenance mode
+talosctl apply-config --insecure --nodes <NODE-IP> --file my-cluster/controlplane.yaml
 
-# Verify the shim binary is statically linked
-talosctl read /usr/local/bin/containerd-shim-kata-v2 --nodes <NODE_IP> | file -
-# Should show: ELF 64-bit LSB executable, x86-64, statically linked
+# Bootstrap after reboot
+talosctl bootstrap --talosconfig my-cluster/talosconfig \
+  --nodes <NODE-IP> --endpoints <NODE-IP>
+
+# Get kubeconfig
+talosctl kubeconfig my-cluster/kubeconfig --talosconfig my-cluster/talosconfig \
+  --nodes <NODE-IP> --endpoints <NODE-IP>
 ```
 
----
-
-## Step 4: Create Kubernetes RuntimeClasses
+### 5. Apply RuntimeClasses & Label Node
 
 ```bash
 kubectl apply -f runtime-classes.yaml
+kubectl label node <node-name> coco.confidentialcontainers.org/snp=true
 ```
 
----
+### 6. Deploy a Confidential Pod
 
-## Step 5: Test
-
-### Test 1: Standard Kata (cloud-hypervisor, virtio-fs)
-
-```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: kata-test
-spec:
-  runtimeClassName: kata
-  containers:
-  - name: test
-    image: busybox
-    command: ["sh", "-c", "echo 'Hello from Kata pod!' && uname -a && sleep 3600"]
-EOF
-
-# Verify it runs inside a micro-VM (different kernel than host)
-kubectl exec kata-test -- uname -r
-# Expected: 6.18.12 (Kata guest kernel, different from host's 6.18.9-talos)
-```
-
-### Test 2: CoCo Dev Mode (QEMU, guest-pull, dm-verity)
-
-The `kata-qemu-coco-dev` handler uses **guest-pull mode** — container images are pulled inside the QEMU micro-VM, not on the host. This is designed for confidential computing where the host is untrusted.
-
-```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: coco-test-dev
-  annotations:
-    io.containerd.cri.v1.images/unpack: "false"
-spec:
-  runtimeClassName: kata-qemu-coco-dev
-  containers:
-  - name: test
-    image: busybox:latest
-    command: ["sh", "-c", "echo 'Hello from CoCo dev pod!' && uname -a && sleep 3600"]
-EOF
-
-kubectl get pod coco-test-dev -w
-kubectl logs coco-test-dev
-# Expected: Hello from CoCo dev pod!
-```
-
-### Verify CoCo Functionality
-
-```bash
-# 1. dm-verity protected guest rootfs
-kubectl exec coco-test-dev -- sh -c "cat /proc/cmdline | tr ' ' '\n' | grep -E 'dm-mod|verity|sha256'"
-# Expected: dm-verity hash verification of the guest root filesystem
-
-# 2. Confidential Data Hub (CDH) configured
-kubectl exec coco-test-dev -- sh -c "cat /proc/cmdline | tr ' ' '\n' | grep cdh"
-# Expected: agent.cdh_api_timeout=50
-
-# 3. VM isolation (different kernel)
-kubectl exec coco-test-dev -- uname -r
-# Expected: 6.18.12 (guest kernel, not host's 6.18.9-talos)
-
-# 4. Guest-pull overlay mount
-kubectl exec coco-test-dev -- mount | head -1
-# Expected: overlay on / type overlay (...lowerdir=/run/kata-containers/image/layers/...)
-
-# 5. No host path leakage
-kubectl exec coco-test-dev -- sh -c "ls /opt/kata 2>/dev/null || echo 'PASS: no host paths leaked'"
-```
-
-### Test 3: CoCo nginx (multi-VM workload)
-
-```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: coco-nginx
-  annotations:
-    io.containerd.cri.v1.images/unpack: "false"
-spec:
-  runtimeClassName: kata-qemu-coco-dev
-  containers:
-  - name: nginx
-    image: nginx:1.27-alpine
-    ports:
-    - containerPort: 80
-    command: ["sh", "-c", "echo 'CoCo confidential nginx!' > /usr/share/nginx/html/index.html && nginx -g 'daemon off;'"]
-EOF
-
-# After it's running, test from another CoCo pod
-kubectl exec coco-test-dev -- wget -qO- http://<coco-nginx-pod-ip>
-# Expected: CoCo confidential nginx!
-```
-
-### Test on Bare-Metal (kata-qemu-snp)
-
-Requires AMD EPYC 7003 (Milan) or newer with SEV-SNP enabled in BIOS.
-
-```bash
-# Apply machine config with KVM/SEV modules
-talosctl apply-config --nodes <NODE_IP> --patch @machine-config-patch.yaml
-
-# Label the SNP node
-kubectl label node <node-name> katacontainers.io/kata-runtime=true
-
-cat <<EOF | kubectl apply -f -
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: coco-test-snp
+  annotations:
+    io.containerd.cri.v1.images/unpack: "false"
 spec:
   runtimeClassName: kata-qemu-snp
   containers:
-  - name: test
-    image: busybox
-    command: ["sh", "-c", "echo 'Hello from SNP confidential pod!' && sleep 3600"]
-EOF
-
-# Verify SEV-SNP is active
-talosctl dmesg --nodes <NODE_IP> | grep -i sev
+    - name: test
+      image: busybox:latest
+      command:
+        ["sh", "-c", "echo 'Hello from SEV-SNP!' && uname -a && sleep 3600"]
 ```
+
+---
+
+## Bare-Metal AMD SEV-SNP Deployment
+
+### BIOS Requirements
+
+Before installing, verify these BIOS settings on your AMD EPYC server:
+
+| Setting                               | Required Value |
+| ------------------------------------- | -------------- |
+| SVM (Secure Virtual Machine)          | Enabled        |
+| SEV (Secure Encrypted Virtualization) | Enabled        |
+| SEV-ES                                | Enabled        |
+| SEV-SNP                               | Enabled        |
+| SMEE (Secure Memory Encryption)       | Enabled        |
+| IOMMU                                 | Enabled        |
+| NX Mode                               | Enabled        |
+
+### Verified Kernel Output
+
+After installing, verify SEV-SNP with `talosctl dmesg`:
+
+```
+SEV-SNP: RMP table physical range [0x... - 0x...]
+AMD-Vi: IOMMU SNP support enabled
+ccp: sev enabled, psp enabled
+SEV-SNP API:1.55 build:61
+kvm_amd: SEV enabled (ASIDs 1006 - 1006)
+kvm_amd: SEV-ES enabled (ASIDs 1 - 1005)
+kvm_amd: SEV-SNP enabled (ASIDs 1 - 1005)
+```
+
+### Network Interface Name
+
+On bare-metal servers, the network interface name is hardware-specific (e.g., `enp129s0f1np1` instead of `eth0`). Check the Talos console in maintenance mode for the correct interface name and update your config patch accordingly.
+
+### Install Disk
+
+Bare-metal servers typically use NVMe drives (`/dev/nvme0n1`) instead of SATA (`/dev/sda`). Verify the correct disk path in the Talos maintenance console before applying config.
+
+---
+
+## Key Design Decisions
+
+### Statically Linked Shim
+
+The `containerd-shim-kata-v2` is rebuilt from source with `CGO_ENABLED=0 BUILDFLAGS="-buildmode=exe"` because Talos Linux has no glibc. The pre-built shim from the Kata static tarball is dynamically linked and won't work.
+
+### SNP-Experimental QEMU
+
+The `kata-qemu-snp` handler uses `qemu-system-x86_64-snp-experimental` (not the standard QEMU) because the standard QEMU does not support SEV-SNP VM launch. The config is patched during build to reference this binary.
+
+### /opt/kata Symlink
+
+Both QEMU binaries have `/opt/kata/` paths compiled in for their data directories (ROM files like `kvmvapic.bin`, `efi-virtio.rom`). Since Talos extensions install to `/usr/local/`, the extension creates a symlink `/opt/kata → /usr/local` to make all compiled-in paths work.
+
+### Guest-Pull Mode
+
+Both `kata-qemu-snp` and `kata-qemu-coco-dev` use `shared_fs = "none"` with `experimental_force_guest_pull = true`. Container images are pulled inside the guest VM, not shared from the host. Pods must include `io.containerd.cri.v1.images/unpack: "false"` annotation.
 
 ---
 
 ## Troubleshooting
 
-### Pod fails: `fork/exec containerd-shim-kata-v2: no such file or directory`
+### `fork/exec containerd-shim-kata-v2: no such file or directory`
 
-The shim binary may be dynamically linked. Verify it's static:
+The shim binary is dynamically linked. Rebuild the extension — the Dockerfile builds a static shim from source.
 
-```bash
-talosctl read /usr/local/bin/containerd-shim-kata-v2 --nodes <NODE_IP> | file -
-```
+### `file /usr/local/share/ovmf/AMDSEV.fd does not exist`
 
-If it says "dynamically linked" — rebuild the extension. The Dockerfile builds the shim from source with `CGO_ENABLED=0 -buildmode=exe` to produce a static binary. The Kata Makefile defaults to `-buildmode=pie` which creates a dynamic binary even with `CGO_ENABLED=0`.
+The OVMF firmware for SEV-SNP is missing. The Dockerfile COPYs it from the kata-static tarball at `opt/kata/share/ovmf/`.
 
-### Pod fails: `shared_fs mount ENOENT` or `rootfs mount failed`
+### `Failed to open file "kvmvapic.bin": No such file or directory`
 
-The `kata-qemu-coco-dev` handler uses `shared_fs = "none"` and `experimental_force_guest_pull = true`. Container images are pulled inside the guest VM. Make sure:
+QEMU can't find its ROM files. The `/opt/kata → /usr/local` symlink resolves this. If missing, QEMU falls back to its compiled-in data directory which won't exist on Talos.
 
-1. The pod has `io.containerd.cri.v1.images/unpack: "false"` annotation
-2. The guest VM has network access to pull images
-3. No old Helm chart config is overriding the runtime handler (check `/etc/cri/conf.d/` for stale files)
+### `failed to mount .../rootfs: ENOENT`
 
-### Old Helm chart configs interfering
+Guest-pull is not enabled. The config needs `experimental_force_guest_pull = true` when `shared_fs = "none"`.
 
-If you previously installed CoCo via Helm / `kata-deploy`, old containerd drop-in files may override your extension's config. Check:
+### `exiting QMP loop, command cancelled`
+
+Multiple possible causes — check CRI logs for the specific QEMU error:
 
 ```bash
-talosctl ls /etc/cri/conf.d/ --nodes <NODE_IP>
+talosctl read /var/log/cri.log | grep -i "qemu\|rom\|error"
 ```
 
-Remove any stale files via `talosctl edit machineconfig` — look for entries under `machine.files` that reference `/var/lib/coco-guest/` or `/var/lib/kata/`.
+### `host doesn't support requested feature: CPUID... rdseed`
 
-### Build Fails on COPY — File Not Found
-
-The `kata-static` tarball contents can vary between releases. Debug with:
-
-```bash
-docker build --target kata-static -t kata-debug .
-docker run --rm kata-debug find /kata-static/opt/kata -type f | sort
-```
-
-### /dev/kvm Not Available
-
-```bash
-talosctl dmesg --nodes <NODE_IP> | grep -i kvm
-```
-
-If missing, add `kvm_amd` (or `kvm_intel`) to your machine config `kernel.modules`.
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Talos Host (immutable root FS)                                 │
-│                                                                 │
-│  containerd ──► 20-coco.part ──► containerd-shim-kata-v2       │
-│                                         │                       │
-│                    ┌────────────────────┤────────────────────┐  │
-│                    │                    │                    │  │
-│             ┌──────▼──────┐   ┌────────▼───────┐  ┌────────▼─┐│
-│             │ kata        │   │ kata-qemu-     │  │ kata-    ││
-│             │ (clh)       │   │ coco-dev       │  │ qemu-snp ││
-│             │ virtio-fs   │   │ guest-pull     │  │ initrd   ││
-│             │ standard    │   │ dm-verity      │  │ SEV-SNP  ││
-│             └─────────────┘   └────────────────┘  └──────────┘│
-│                                                                 │
-│  Extension files:  /usr/local/bin/      (binaries)             │
-│                    /usr/local/libexec/  (virtiofsd)             │
-│                    /usr/local/share/    (kernels, images, cfg)  │
-│                    /etc/cri/conf.d/     (containerd drop-in)   │
-└─────────────────────────────────────────────────────────────────┘
-```
+This is a warning, not an error. It occurs when the host CPU doesn't support the RDSEED instruction. QEMU continues normally.
 
 ---
 
 ## File Structure
 
 ```
-talos-coco-extension/
-├── Dockerfile                          # Three-stage build (tarball + Go shim + scratch)
-├── manifest.yaml                       # Talos extension metadata
-├── machine-config-patch.yaml           # Talos machine config example
-├── runtime-classes.yaml                # Kubernetes RuntimeClass manifests
-├── README.md                           # This file
+.
+├── Dockerfile                  # Multi-stage build (kata-static + kata-shim + extension)
+├── README.md                   # This file
+├── manifest.yaml               # Talos extension metadata (v1.0.0)
+├── machine-config-patch.yaml   # Machine config patch template
+├── runtime-classes.yaml        # Kubernetes RuntimeClass manifests
 └── rootfs/
-    └── etc/
-        └── cri/
-            └── conf.d/
-                └── 20-coco.part        # Containerd runtime handler registration
+    └── etc/cri/conf.d/
+        └── 20-coco.part        # Containerd CRI runtime handler config
 ```
 
-> **Note:** Configuration TOML files (e.g., `configuration-qemu-coco-dev.toml`) are extracted from the official Kata release tarball during the Docker build, with paths rewritten from `/opt/kata/` to `/usr/local/` and guest-pull enabled.
+## Extension Contents
 
----
+| Path                                                 | Description                                 |
+| ---------------------------------------------------- | ------------------------------------------- |
+| `/usr/local/bin/containerd-shim-kata-v2`             | Kata shim (static, built from source)       |
+| `/usr/local/bin/cloud-hypervisor`                    | Cloud Hypervisor (for `kata` handler)       |
+| `/usr/local/bin/qemu-system-x86_64`                  | Standard QEMU (for `kata-qemu-coco-dev`)    |
+| `/usr/local/bin/qemu-system-x86_64-snp-experimental` | SNP QEMU (for `kata-qemu-snp`)              |
+| `/usr/local/libexec/virtiofsd`                       | virtiofsd daemon                            |
+| `/usr/local/share/kata-containers/`                  | Guest kernels, images, initrd, config files |
+| `/usr/local/share/ovmf/AMDSEV.fd`                    | OVMF firmware for SEV-SNP                   |
+| `/usr/local/share/kata-qemu/`                        | Standard QEMU firmware/ROM files            |
+| `/usr/local/share/kata-qemu-snp-experimental/`       | SNP QEMU firmware/ROM files                 |
+| `/opt/kata`                                          | Symlink → `/usr/local`                      |
+| `/etc/cri/conf.d/20-coco.part`                       | Containerd runtime handler config           |
 
-## References
+## Versioning
 
-- [Talos System Extensions Guide](https://www.talos.dev/latest/talos-guides/configuration/system-extensions/)
-- [Official kata-containers extension](https://github.com/siderolabs/extensions/tree/main/container-runtime/kata-containers)
-- [Kata Containers Releases](https://github.com/kata-containers/kata-containers/releases)
-- [Confidential Containers Project](https://confidentialcontainers.org/)
-- [CoCo Quickstart Guide](https://confidentialcontainers.org/docs/getting-started/)
-- [AMD SEV-SNP Documentation](https://www.amd.com/en/developer/sev.html)
+- **Extension version**: `v1.0.0` (independent from upstream Kata)
+- **Kata Containers base**: `3.27.0`
+- **Talos compatibility**: `>= v1.9.0`
