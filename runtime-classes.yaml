@@ -13,7 +13,7 @@ metadata:
 handler: kata-qemu-snp
 overhead:
   podFixed:
-    memory: "160Mi"
+    memory: "180Mi"
     cpu: "250m"
 scheduling:
   nodeSelector:

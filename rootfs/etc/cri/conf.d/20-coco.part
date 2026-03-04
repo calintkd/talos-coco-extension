@@ -11,9 +11,9 @@
 #   - kata               : Standard cloud-hypervisor (non-confidential)
 # =============================================================================
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # kata-qemu-snp — AMD SEV-SNP confidential containers (production)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata-qemu-snp]
   runtime_type = "io.containerd.kata.v2"
   privileged_without_host_devices = true
@@ -21,9 +21,9 @@
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata-qemu-snp.options]
   ConfigPath = "/usr/local/share/kata-containers/configuration-qemu-snp.toml"
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # kata-qemu-coco-dev — CoCo development / testing (no TEE hardware needed)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata-qemu-coco-dev]
   runtime_type = "io.containerd.kata.v2"
   privileged_without_host_devices = true
@@ -31,9 +31,9 @@
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata-qemu-coco-dev.options]
   ConfigPath = "/usr/local/share/kata-containers/configuration-qemu-coco-dev.toml"
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # kata — Standard cloud-hypervisor (non-confidential fallback)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata]
   runtime_type = "io.containerd.kata.v2"
   privileged_without_host_devices = true

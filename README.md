@@ -114,7 +114,13 @@ talosctl kubeconfig my-cluster/kubeconfig --talosconfig my-cluster/talosconfig \
 ```bash
 kubectl apply -f runtime-classes.yaml
 kubectl label node <node-name> coco.confidentialcontainers.org/snp=true
+
+# Optional (production multi-node clusters): taint SNP nodes so only
+# confidential workloads are scheduled on them
+# kubectl taint nodes <node-name> coco.confidentialcontainers.org/snp=true:NoSchedule
 ```
+
+> **Talos tip:** On Talos, the preferred way to apply node labels is via `machine.nodeLabels` in the machine config (see `machine-config-patch.yaml`). Labels set this way are re-applied on every boot and survive node re-provisioning, unlike `kubectl label` which only persists in etcd.
 
 ### 6. Deploy a Confidential Pod
 
@@ -233,13 +239,7 @@ kvm_amd: SEV-ES enabled (ASIDs 1 - 1005)
 kvm_amd: SEV-SNP enabled (ASIDs 1 - 1005)
 ```
 
-### Network Interface Name
-
-On bare-metal servers, the network interface name is hardware-specific (e.g., `enp129s0f1np1` instead of `eth0`). Check the Talos console in maintenance mode for the correct interface name and update your config patch accordingly.
-
-### Install Disk
-
-Bare-metal servers typically use NVMe drives (`/dev/nvme0n1`) instead of SATA (`/dev/sda`). Verify the correct disk path in the Talos maintenance console before applying config.
+> **Bare-metal tips:** Check the Talos maintenance console to identify the correct install disk (often `/dev/nvme0n1`, not `/dev/sda`) and network interface name (e.g., `enp129s0f1np1`, not `eth0`).
 
 ---
 
@@ -299,11 +299,11 @@ This is a warning, not an error. It occurs when the host CPU doesn't support the
 
 ```
 .
-├── Dockerfile                  # Multi-stage build (kata-static + kata-shim + extension)
-├── README.md                   # This file
-├── manifest.yaml               # Talos extension metadata (v1.0.0)
-├── machine-config-patch.yaml   # Machine config patch template
-├── runtime-classes.yaml        # Kubernetes RuntimeClass manifests
+├── Dockerfile                   # Multi-stage build (kata-static + kata-shim + extension)
+├── README.md                    # This file
+├── manifest.yaml                # Talos extension metadata (v1.0.0)
+├── machine-config-patch.yaml    # Machine config patch template
+├── runtime-classes.yaml         # Kubernetes RuntimeClass manifests
 └── rootfs/
     └── etc/cri/conf.d/
         └── 20-coco.part        # Containerd CRI runtime handler config

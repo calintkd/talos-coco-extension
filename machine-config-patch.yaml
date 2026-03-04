@@ -19,4 +19,4 @@ machine:
   kernel:
     modules:
       - name: kvm_amd
-      - name: ccp         # AMD Cryptographic Co-processor (provides /dev/sev)
+      - name: ccp          # AMD Cryptographic Co-processor (provides /dev/sev)

@@ -144,7 +144,7 @@ COPY --from=kata-static \
   /kata-static/opt/kata/libexec/virtiofsd \
   /rootfs/usr/local/libexec/virtiofsd
 
-# -- Guest kernels -------------------------------------------------------------
+# -- Guest kernels ------------------------------------------------------------
 
 # vmlinux (uncompressed, for cloud-hypervisor)
 COPY --from=kata-static \
