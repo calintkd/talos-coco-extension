@@ -109,18 +109,27 @@ talosctl kubeconfig my-cluster/kubeconfig --talosconfig my-cluster/talosconfig \
   --nodes <NODE-IP> --endpoints <NODE-IP>
 ```
 
-### 5. Apply RuntimeClasses & Label Node
+### 5. Apply RuntimeClasses
+
+Node labels are already set by `machine-config-patch.yaml` (applied in Step 4). You only need to create the RuntimeClasses:
 
 ```bash
 kubectl apply -f runtime-classes.yaml
-kubectl label node <node-name> coco.confidentialcontainers.org/snp=true
-
-# Optional (production multi-node clusters): taint SNP nodes so only
-# confidential workloads are scheduled on them
-# kubectl taint nodes <node-name> coco.confidentialcontainers.org/snp=true:NoSchedule
 ```
 
-> **Talos tip:** On Talos, the preferred way to apply node labels is via `machine.nodeLabels` in the machine config (see `machine-config-patch.yaml`). Labels set this way are re-applied on every boot and survive node re-provisioning, unlike `kubectl label` which only persists in etcd.
+> **Note:** If you didn't use `machine-config-patch.yaml`, apply labels manually:
+>
+> ```bash
+> kubectl label node <node-name> coco.confidentialcontainers.org/snp=true
+> ```
+>
+> For production multi-node clusters, optionally taint SNP nodes to only accept confidential workloads:
+>
+> ```bash
+> kubectl taint nodes <node-name> coco.confidentialcontainers.org/snp=true:NoSchedule
+> ```
+
+> **Talos tip:** The preferred way to apply node labels on Talos is via `machine.nodeLabels` in the machine config. Labels set this way are re-applied on every boot and survive node re-provisioning, unlike `kubectl label` which only persists in etcd.
 
 ### 6. Deploy a Confidential Pod
 
