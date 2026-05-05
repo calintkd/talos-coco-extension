@@ -24,3 +24,5 @@ worker.yaml
 # Environment-specific config directories
 talos-dev/
 talos-amd/
+OPERATIONS.md
+demo-showcase.md

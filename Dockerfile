@@ -11,16 +11,16 @@
 #
 # Build:
 #   docker buildx build --platform linux/amd64 \
-#     --build-arg KATA_VERSION=3.27.0 \
-#     -t ghcr.io/<org>/talos-coco-extension:v1.0.0 --push .
+#     --build-arg KATA_VERSION=3.30.0 \
+#     -t ghcr.io/<org>/talos-coco-extension:v1.1.0 --push .
 #
 # Debug (list tarball contents):
 #   docker build --target kata-static -t kata-debug .
 #   docker run --rm kata-debug find /kata-static/opt/kata -type f | sort
 # =============================================================================
 
-ARG KATA_VERSION=3.27.0
-ARG GO_VERSION=1.24
+ARG KATA_VERSION=3.30.0
+ARG GO_VERSION=1.25
 
 # =============================================================================
 # Stage 1: Download, extract, and patch paths in config files

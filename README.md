@@ -16,7 +16,7 @@ On standard Linux distributions (Ubuntu, RHEL), CoCo is deployed via the [CoCo H
 
 ## Overview
 
-This extension packages Kata Containers 3.27.0 into a Talos system extension, providing:
+This extension packages Kata Containers 3.30.0 into a Talos system extension, providing:
 
 | Runtime Handler      | Use Case                  | Hypervisor              | Confidential   |
 | -------------------- | ------------------------- | ----------------------- | -------------- |
@@ -56,8 +56,8 @@ This extension packages Kata Containers 3.27.0 into a Talos system extension, pr
 
 ```bash
 docker buildx build --platform linux/amd64 \
-  --build-arg KATA_VERSION=3.27.0 \
-  -t ghcr.io/<your-org>/talos-coco-extension:v1.0.0 \
+  --build-arg KATA_VERSION=3.30.0 \
+  -t ghcr.io/<your-org>/talos-coco-extension:v1.1.0 \
   --push .
 ```
 
@@ -68,12 +68,12 @@ docker buildx build --platform linux/amd64 \
 docker run --rm -t \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.12.4 installer \
+  ghcr.io/siderolabs/imager:v1.13.0 installer \
   --arch amd64 \
-  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.0.0
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.1.0
 
 # Push to registry
-crane push _out/installer-amd64.tar ghcr.io/<your-org>/talos-installer:v1.12.4-coco
+crane push _out/installer-amd64.tar ghcr.io/<your-org>/talos-installer:v1.13.0-coco
 ```
 
 ### 3. Build ISO (for bare-metal install)
@@ -82,9 +82,9 @@ crane push _out/installer-amd64.tar ghcr.io/<your-org>/talos-installer:v1.12.4-c
 docker run --rm -t \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.12.4 iso \
+  ghcr.io/siderolabs/imager:v1.13.0 iso \
   --arch amd64 \
-  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.0.0
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.1.0
 # Output: _out/metal-amd64.iso
 ```
 
@@ -295,7 +295,7 @@ Guest-pull is not enabled. The config needs `experimental_force_guest_pull = tru
 Multiple possible causes — check CRI logs for the specific QEMU error:
 
 ```bash
-talosctl read /var/log/cri.log | grep -i "qemu\|rom\|error"
+talosctl logs containerd | grep -i "qemu\|rom\|error"
 ```
 
 ### `host doesn't support requested feature: CPUID... rdseed`
@@ -310,7 +310,7 @@ This is a warning, not an error. It occurs when the host CPU doesn't support the
 .
 ├── Dockerfile                   # Multi-stage build (kata-static + kata-shim + extension)
 ├── README.md                    # This file
-├── manifest.yaml                # Talos extension metadata (v1.0.0)
+├── manifest.yaml                # Talos extension metadata (v1.1.0)
 ├── machine-config-patch.yaml    # Machine config patch template
 ├── runtime-classes.yaml         # Kubernetes RuntimeClass manifests
 └── rootfs/
@@ -336,9 +336,9 @@ This is a warning, not an error. It occurs when the host CPU doesn't support the
 
 ## Versioning
 
-- **Extension version**: `v1.0.0` (independent from upstream Kata)
-- **Kata Containers base**: `3.27.0`
-- **Talos compatibility**: `>= v1.9.0`
+- **Extension version**: `v1.1.0` (independent from upstream Kata)
+- **Kata Containers base**: `3.30.0`
+- **Talos compatibility**: `>= v1.13.0`
 
 > **Note:** Configuration TOML files (e.g., `configuration-qemu-snp.toml`) are extracted from the official Kata release tarball during the Docker build, with paths rewritten from `/opt/kata/` to `/usr/local/` and guest-pull enabled.
 
