@@ -252,6 +252,101 @@ kvm_amd: SEV-SNP enabled (ASIDs 1 - 1005)
 
 ---
 
+## Upgrading
+
+### Extension-Only Upgrade (New Kata Version)
+
+When a new Kata Containers release is available:
+
+```bash
+# 1. Update KATA_VERSION in the Dockerfile, then rebuild
+docker buildx build --platform linux/amd64 \
+  --build-arg KATA_VERSION=<NEW_VERSION> \
+  -t ghcr.io/<your-org>/talos-coco-extension:v<NEW_EXT_VERSION> \
+  --push .
+
+# 2. Rebuild the installer with the updated extension
+docker run --rm -t \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v $(pwd)/_out:/out \
+  ghcr.io/siderolabs/imager:v1.13.0 installer \
+  --arch amd64 \
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v<NEW_EXT_VERSION>
+
+# 3. Push the new installer
+crane push _out/installer-amd64.tar \
+  ghcr.io/<your-org>/talos-installer:v1.13.0-kata<NEW_VERSION>
+
+# 4. Rolling upgrade each node (one at a time!)
+talosctl --talosconfig <TALOSCONFIG> -n <NODE_IP> -e <NODE_IP> upgrade \
+  --image ghcr.io/<your-org>/talos-installer:v1.13.0-kata<NEW_VERSION> \
+  --preserve
+```
+
+### Talos OS + Extension Upgrade
+
+When upgrading the Talos OS version (e.g., v1.13.0 → v1.14.0):
+
+```bash
+# 1. Rebuild extension (same Kata version, new Talos imager)
+docker buildx build --platform linux/amd64 \
+  --build-arg KATA_VERSION=3.30.0 \
+  -t ghcr.io/<your-org>/talos-coco-extension:v<EXT_VERSION> \
+  --push .
+
+# 2. Build installer with the NEW Talos imager version
+docker run --rm -t \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v $(pwd)/_out:/out \
+  ghcr.io/siderolabs/imager:v<NEW_TALOS_VERSION> installer \
+  --arch amd64 \
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v<EXT_VERSION>
+
+crane push _out/installer-amd64.tar \
+  ghcr.io/<your-org>/talos-installer:v<NEW_TALOS_VERSION>-kata3.30.0
+
+# 3. Rolling upgrade — one node at a time, workers first
+for NODE_IP in <WORKER_IPS> <CP_IPS>; do
+  kubectl cordon <NODE_NAME>
+  kubectl drain <NODE_NAME> --ignore-daemonsets --delete-emptydir-data --force --timeout=120s
+
+  talosctl --talosconfig <TALOSCONFIG> -n $NODE_IP -e $NODE_IP upgrade \
+    --image ghcr.io/<your-org>/talos-installer:v<NEW_TALOS_VERSION>-kata3.30.0 \
+    --preserve
+
+  # Wait for node to come back (~3-5 min)
+  talosctl --talosconfig <TALOSCONFIG> -n $NODE_IP -e $NODE_IP version --short
+  talosctl --talosconfig <TALOSCONFIG> -n $NODE_IP -e $NODE_IP get extensions
+
+  kubectl uncordon <NODE_NAME>
+done
+```
+
+> **Critical:** Never upgrade more than one node at a time. Maintain etcd quorum (majority of control-plane nodes must remain healthy).
+
+### Kubernetes Version Upgrade
+
+Kubernetes can be upgraded independently of the Talos OS. Talos manages the K8s component lifecycle:
+
+```bash
+talosctl --talosconfig <TALOSCONFIG> -n <CP_NODE_IP> -e <CP_NODE_IP> \
+  upgrade-k8s --to <NEW_K8S_VERSION>
+```
+
+This upgrades kube-apiserver, kube-controller-manager, kube-scheduler, kube-proxy, and kubelet across all nodes automatically.
+
+### What Survives an Upgrade
+
+| Item | Survives? | Notes |
+|------|-----------|-------|
+| Machine config (network, labels, kernel modules) | ✅ | Stored on disk, re-read on boot |
+| Kubernetes state (pods, services, secrets) | ✅ | Stored in etcd |
+| RuntimeClasses, Helm releases | ✅ | Stored in etcd |
+| CoCo extension + containerd CRI config | ✅ | Baked into installer image |
+| Custom files on the host filesystem | ❌ | Talos is immutable — use extensions |
+
+---
+
 ## Key Design Decisions
 
 ### Statically Linked Shim
