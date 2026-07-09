@@ -1,0 +1,23 @@
+version: v1alpha1
+metadata:
+  name: coco-kata-nvidia-gpu
+  version: 1.2.0-rc2
+  author: CoCo Extension (custom)
+  description: |
+    NVIDIA GPU add-on for the Talos CoCo extension (coco-kata-containers).
+    Adds the kata-qemu-nvidia-gpu-snp runtime handler for AMD SEV-SNP
+    confidential VMs with NVIDIA GPU VFIO passthrough (driver + NVRC live
+    inside the guest, never on the host). Ships the NVIDIA guest kernel,
+    the NVIDIA confidential guest image, the Kata configuration for
+    GPU+SNP, and the nvidia-vfio-cdi extension service (generates the
+    IOMMUFD-cdev CDI spec for vfio-bound GPUs in /run/cdi at every boot).
+    Requires the base coco-kata-containers extension >= 1.1.0 on the same
+    node (provides the SNP-experimental QEMU, virtiofsd, and the statically
+    linked Kata shim) AND a Talos kernel with CONFIG_IOMMUFD=y +
+    CONFIG_VFIO_DEVICE_CDEV=y (custom kernel — confidential guests require
+    the VFIO IOMMUFD cdev interface; no stock Talos kernel enables it).
+    GPU prerequisite: Confidential Computing mode ON (persistent per-GPU
+    setting via NVIDIA gpu-admin-tools).
+  compatibility:
+    talos:
+      version: ">= v1.13.0"

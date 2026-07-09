@@ -24,8 +24,10 @@ worker.yaml
 # Environment-specific config directories
 talos-dev/
 talos-amd/
-OPERATIONS.md
-demo-showcase.md
-Environment-context.md
-falco-analysis.md
+talos-test/
+
+# Project-level AI agent guidance (must stay at repo root for Claude Code)
 CLAUDE.md
+
+# All operational docs, analyses, and POC kits — gitignored as a group
+ops/

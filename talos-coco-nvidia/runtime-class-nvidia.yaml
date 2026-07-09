@@ -1,0 +1,29 @@
+# =============================================================================
+# Kubernetes RuntimeClass for the NVIDIA GPU CoCo runtime handler
+# =============================================================================
+# Apply after the coco-kata-nvidia-gpu extension is installed on the GPU node:
+#   kubectl apply -f runtime-class-nvidia.yaml
+#
+# Scheduling: pods using this class only land on nodes carrying BOTH labels
+# below (set via machine-config-patch-gpu-worker.yaml). On clusters without
+# a labelled GPU node, such pods stay Pending — that is the expected
+# "inert but wired" state and doubles as the smoke test on non-GPU clusters.
+# =============================================================================
+
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-qemu-nvidia-gpu-snp
+handler: kata-qemu-nvidia-gpu-snp
+overhead:
+  podFixed:
+    # Starting point mirrors kata-qemu-snp (180Mi/250m). GPU CVMs carry a
+    # bigger guest (NVIDIA kernel + driver image) — revisit after measuring
+    # on real GPU hardware (Stage 3).
+    memory: "180Mi"
+    cpu: "250m"
+scheduling:
+  nodeSelector:
+    coco.confidentialcontainers.org/snp: "true"
+    nvidia.com/gpu.workload.config: "vm-passthrough"
