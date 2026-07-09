@@ -16,12 +16,12 @@
 #
 # Build (context = this directory):
 #   docker buildx build --platform linux/amd64 \
-#     --build-arg KATA_VERSION=3.30.0 \
+#     --build-arg KATA_VERSION=3.32.0 \
 #     -f talos-coco-nvidia/Dockerfile \
-#     -t ghcr.io/<org>/talos-coco-nvidia:v1.2.0-rc2 --push talos-coco-nvidia/
+#     -t ghcr.io/<org>/talos-coco-nvidia:v1.3.0-rc1 --push talos-coco-nvidia/
 # =============================================================================
 
-ARG KATA_VERSION=3.30.0
+ARG KATA_VERSION=3.32.0
 
 # Static busybox for the nvidia-vfio-cdi extension service (the extension
 # rootfs is FROM scratch — no shell of its own).

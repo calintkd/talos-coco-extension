@@ -1,15 +1,14 @@
 version: v1alpha1
 metadata:
   name: coco-kata-containers
-  version: 1.1.0
+  version: 1.2.0
   author: CoCo Extension (custom)
   description: |
     Confidential Containers (CoCo) runtime extension for Talos Linux.
-    Based on Kata Containers 3.30.0. Provides containerd-shim-kata-v2,
+    Based on Kata Containers 3.32.0. Provides containerd-shim-kata-v2,
     QEMU with SEV-SNP support, cloud-hypervisor, virtiofsd, guest kernels,
-    confidential guest images, and QEMU firmware blobs. 
+    confidential guest images, and QEMU firmware blobs.
     Registers kata-qemu-snp, kata-qemu-coco-dev, and kata runtime handlers.
   compatibility:
     talos:
       version: ">= v1.13.0"
-

@@ -8,7 +8,8 @@ encrypted guest** — the host never loads a GPU driver.
 **Proven end-to-end 2026-07-09** on H200 NVL + AMD EPYC (Turin) under Talos v1.13.5:
 `nvidia-smi` in the SNP guest in ~30 s (`conf-compute`: CC ON / ready / PRODUCTION),
 CUDA vectorAdd `Test PASSED`, vLLM v0.24.0 offline inference green in 4m35s
-(10 GB image pulled inside the guest). See the validation ladder below.
+(10 GB image pulled inside the guest). Re-validated same day on **Kata 3.32.0 /
+QEMU 11.0.0** (`nvidia-smi` + vectorAdd). See the validation ladder below.
 
 ## Why a separate extension
 
@@ -22,22 +23,23 @@ GPU support is isolated here so:
 - node roles compose cleanly at installer build time: base everywhere, add-on only
   in the GPU node's installer.
 
-**Dependency**: requires the base extension `>= 1.1.0` on the same node — it provides
-`qemu-system-x86_64-snp-experimental`, `virtiofsd`, and the statically linked
-`containerd-shim-kata-v2` that this add-on's runtime handler uses.
+**Dependency**: requires the base extension `>= 1.2.0` **built from the same Kata
+version** (guest assets must match the base's QEMU/shim) on the same node — it
+provides `qemu-system-x86_64-snp-experimental`, `virtiofsd`, and the statically
+linked `containerd-shim-kata-v2` that this add-on's runtime handler uses.
 
 ## Contents
 
 | Path | Size | Description |
 | --- | --- | --- |
 | `/usr/local/share/kata-containers/configuration-qemu-nvidia-gpu-snp.toml` | 34 K | Kata config for SNP + GPU passthrough (path-rewritten, guest-pull enabled, dm-verity hash inline) |
-| `/usr/local/share/kata-containers/vmlinuz-nvidia-gpu.container` | 8.4 M | NVIDIA guest kernel 6.18.15-192-nvidia-gpu |
-| `/usr/local/share/kata-containers/kata-containers-nvidia-gpu-confidential.img` | 1.1 G | Ubuntu-noble guest rootfs with NVIDIA driver 595.58.03 + NVRC v0.1.4 |
+| `/usr/local/share/kata-containers/vmlinuz-nvidia-gpu.container` | ~8 M | NVIDIA guest kernel (version tracks the Kata release) |
+| `/usr/local/share/kata-containers/kata-containers-nvidia-gpu-confidential.img` | ~1.1 G | Ubuntu-noble guest rootfs with NVIDIA driver + NVRC (595.58.03 in Kata 3.30–3.32) |
 | `/etc/cri/conf.d/30-coco-nvidia.part` | — | containerd CRI handler drop-in (merges after the base's `20-coco.part`) |
 | `/usr/local/etc/containers/nvidia-vfio-cdi.yaml` | — | Extension service: VFIO CDI spec generator (runs every boot) |
 | `/usr/local/lib/containers/nvidia-vfio-cdi/{busybox,nvidia-vfio-cdi-gen.sh}` | ~1 M | The service's container rootfs: static busybox runner + generator script |
 
-Filenames verified against the `kata-static-3.30.0-amd64.tar.zst` listing (2026-06-12).
+Filenames verified against the `kata-static-3.32.0-amd64.tar.zst` listing (2026-07-09).
 The TOML references the base extension's QEMU (`qemu-system-x86_64-snp-experimental`)
 and OVMF (`/usr/local/share/ovmf/AMDSEV.fd`) — hence the base dependency.
 
@@ -99,9 +101,9 @@ back with `--set-cc-mode=off` if the node leaves confidential duty.
 
 ```bash
 docker buildx build --platform linux/amd64 \
-  --build-arg KATA_VERSION=3.30.0 \
+  --build-arg KATA_VERSION=3.32.0 \
   -f talos-coco-nvidia/Dockerfile \
-  -t ghcr.io/<your-org>/talos-coco-nvidia:v1.2.0-rc2 \
+  -t ghcr.io/<your-org>/talos-coco-nvidia:v1.3.0-rc1 \
   --push talos-coco-nvidia/
 ```
 
@@ -112,8 +114,8 @@ docker buildx build --platform linux/amd64 \
 docker run --rm -t -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/_out:/out \
   ghcr.io/<your-org>/imager:<talos-version> installer --arch amd64 \
   --base-installer-image ghcr.io/siderolabs/installer-base:<talos-version> \
-  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.1.0 \
-  --system-extension-image ghcr.io/<your-org>/talos-coco-nvidia:v1.2.0-rc2
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.2.0 \
+  --system-extension-image ghcr.io/<your-org>/talos-coco-nvidia:v1.3.0-rc1
 
 # CP / CPU worker — base only, stock kernel is fine (no rebuild needed)
 ```

@@ -16,7 +16,7 @@ On standard Linux distributions (Ubuntu, RHEL), CoCo is deployed via the [CoCo H
 
 ## Overview
 
-This extension packages Kata Containers 3.30.0 into a Talos system extension, providing:
+This extension packages Kata Containers 3.32.0 into a Talos system extension, providing:
 
 | Runtime Handler      | Use Case                  | Hypervisor              | Confidential   |
 | -------------------- | ------------------------- | ----------------------- | -------------- |
@@ -56,8 +56,8 @@ This extension packages Kata Containers 3.30.0 into a Talos system extension, pr
 
 ```bash
 docker buildx build --platform linux/amd64 \
-  --build-arg KATA_VERSION=3.30.0 \
-  -t ghcr.io/<your-org>/talos-coco-extension:v1.1.0 \
+  --build-arg KATA_VERSION=3.32.0 \
+  -t ghcr.io/<your-org>/talos-coco-extension:v1.2.0 \
   --push .
 ```
 
@@ -70,7 +70,7 @@ docker run --rm -t \
   -v $(pwd)/_out:/out \
   ghcr.io/siderolabs/imager:v1.13.0 installer \
   --arch amd64 \
-  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.1.0
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.2.0
 
 # Push to registry
 crane push _out/installer-amd64.tar ghcr.io/<your-org>/talos-installer:v1.13.0-coco
@@ -84,7 +84,7 @@ docker run --rm -t \
   -v $(pwd)/_out:/out \
   ghcr.io/siderolabs/imager:v1.13.0 iso \
   --arch amd64 \
-  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.1.0
+  --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v1.2.0
 # Output: _out/metal-amd64.iso
 ```
 
@@ -290,7 +290,7 @@ When upgrading the Talos OS version (e.g., v1.13.0 → v1.14.0):
 ```bash
 # 1. Rebuild extension (same Kata version, new Talos imager)
 docker buildx build --platform linux/amd64 \
-  --build-arg KATA_VERSION=3.30.0 \
+  --build-arg KATA_VERSION=3.32.0 \
   -t ghcr.io/<your-org>/talos-coco-extension:v<EXT_VERSION> \
   --push .
 
@@ -303,7 +303,7 @@ docker run --rm -t \
   --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v<EXT_VERSION>
 
 crane push _out/installer-amd64.tar \
-  ghcr.io/<your-org>/talos-installer:v<NEW_TALOS_VERSION>-kata3.30.0
+  ghcr.io/<your-org>/talos-installer:v<NEW_TALOS_VERSION>-kata3.32.0
 
 # 3. Rolling upgrade — one node at a time, workers first
 for NODE_IP in <WORKER_IPS> <CP_IPS>; do
@@ -311,7 +311,7 @@ for NODE_IP in <WORKER_IPS> <CP_IPS>; do
   kubectl drain <NODE_NAME> --ignore-daemonsets --delete-emptydir-data --force --timeout=120s
 
   talosctl --talosconfig <TALOSCONFIG> -n $NODE_IP -e $NODE_IP upgrade \
-    --image ghcr.io/<your-org>/talos-installer:v<NEW_TALOS_VERSION>-kata3.30.0 \
+    --image ghcr.io/<your-org>/talos-installer:v<NEW_TALOS_VERSION>-kata3.32.0 \
     --preserve
 
   # Wait for node to come back (~3-5 min)
@@ -405,7 +405,7 @@ This is a warning, not an error. It occurs when the host CPU doesn't support the
 .
 ├── Dockerfile                   # Multi-stage build (kata-static + kata-shim + extension)
 ├── README.md                    # This file
-├── manifest.yaml                # Talos extension metadata (v1.1.0)
+├── manifest.yaml                # Talos extension metadata (v1.2.0)
 ├── machine-config-patch.yaml    # Machine config patch template
 ├── runtime-classes.yaml         # Kubernetes RuntimeClass manifests
 └── rootfs/
@@ -431,8 +431,8 @@ This is a warning, not an error. It occurs when the host CPU doesn't support the
 
 ## Versioning
 
-- **Extension version**: `v1.1.0` (independent from upstream Kata)
-- **Kata Containers base**: `3.30.0`
+- **Extension version**: `v1.2.0` (independent from upstream Kata)
+- **Kata Containers base**: `3.32.0`
 - **Talos compatibility**: `>= v1.13.0`
 
 > **Note:** Configuration TOML files (e.g., `configuration-qemu-snp.toml`) are extracted from the official Kata release tarball during the Docker build, with paths rewritten from `/opt/kata/` to `/usr/local/` and guest-pull enabled.

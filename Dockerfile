@@ -11,15 +11,15 @@
 #
 # Build:
 #   docker buildx build --platform linux/amd64 \
-#     --build-arg KATA_VERSION=3.30.0 \
-#     -t ghcr.io/<org>/talos-coco-extension:v1.1.0 --push .
+#     --build-arg KATA_VERSION=3.32.0 \
+#     -t ghcr.io/<org>/talos-coco-extension:v1.2.0 --push .
 #
 # Debug (list tarball contents):
 #   docker build --target kata-static -t kata-debug .
 #   docker run --rm kata-debug find /kata-static/opt/kata -type f | sort
 # =============================================================================
 
-ARG KATA_VERSION=3.30.0
+ARG KATA_VERSION=3.32.0
 ARG GO_VERSION=1.25
 
 # =============================================================================
@@ -101,13 +101,21 @@ RUN go mod download
 # The Makefile defaults to -buildmode=pie which creates a dynamically linked PIE
 # binary (requires /lib64/ld-linux-x86-64.so.2 which doesn't exist on Talos).
 # Using -buildmode=exe produces a truly static, self-contained binary.
+# -mod=mod (not vendor): since Kata 3.32.0 the runtime's vendor/modules.txt is
+# out of sync with go.mod ("explicitly required in go.mod, but not marked as
+# explicit in vendor/modules.txt") — modules come from `go mod download`
+# above, integrity enforced by go.sum.
 RUN CGO_ENABLED=0 PREFIX=/usr/local make \
-  BUILDFLAGS="-buildmode=exe -mod=vendor" \
+  BUILDFLAGS="-buildmode=exe -mod=mod" \
   SKIP_GO_VERSION_CHECK=y \
   containerd-shim-v2
 
-# Verify it's static
-RUN file containerd-shim-kata-v2 | grep -q "statically linked" && echo "OK: static binary" || echo "WARNING: not static"
+# Verify it's static — HARD gate (a dynamic shim silently fails on Talos: no
+# glibc). Use ldd, not file: `file` isn't installed in golang:bookworm, which
+# made the old warn-only check always print its fallback.
+RUN ldd containerd-shim-kata-v2 2>&1 | grep -q "not a dynamic executable" \
+  && echo "OK: static binary" \
+  || { echo "ERROR: shim is dynamically linked"; exit 1; }
 
 # =============================================================================
 # Stage 3: Assemble the Talos system extension image (FROM scratch)
