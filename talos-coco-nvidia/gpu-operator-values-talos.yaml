@@ -1,7 +1,12 @@
 # =============================================================================
 # NVIDIA GPU Operator — Helm values for Talos GPU worker (VFIO + CoCo)
 # =============================================================================
-# Chart: nvidia/gpu-operator, pin v25.10.1 (parity with the Ubuntu cluster).
+# Chart: nvidia/gpu-operator, pin v26.3.3 (verified on Talos 2026-07-09; the
+# upgrade from v25.10.1 needs `--disable-openapi-validation` because the chart
+# defaults to operator.upgradeCRD=true).
+# NOTE v26.3+ adds `sandboxWorkloads.mode: "kata"` — it deploys the same
+# nvidia-sandbox-device-plugin we pin below (upstream converged on it);
+# candidate to replace the explicit pin after evaluation.
 # Talos principle: the operator must NOT touch the host — host pieces come
 # from the talos-coco-nvidia system extension + machine config instead.
 #
@@ -20,7 +25,7 @@
 #   kubectl create ns gpu-operator
 #   kubectl label ns gpu-operator pod-security.kubernetes.io/enforce=privileged
 #   helm install gpu-operator nvidia/gpu-operator -n gpu-operator \
-#     --version v25.10.1 -f gpu-operator-values-talos.yaml
+#     --version v26.3.3 -f gpu-operator-values-talos.yaml --disable-openapi-validation
 #
 # On a non-GPU cluster this deploys inert (NFD finds no GPU; the GPU-specific
 # DaemonSets — sandbox-device-plugin, validator — never schedule) — that IS
