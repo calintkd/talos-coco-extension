@@ -55,6 +55,17 @@ RUN sed -i \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
 
+# Raise create_container_timeout for the guest-pull configs. With guest-pull the
+# container image is pulled AND UNPACKED inside the guest during
+# CreateContainerRequest; kata's default 60s is too short for large images (a
+# ~3GB image times out with "CreateContainerRequest timed out"). Match the NVIDIA
+# GPU add-on's 1200s. kubelet runtimeRequestTimeout is unset (0s) on this stack,
+# so the guest-pull budget is governed solely by create_container_timeout.
+RUN sed -i \
+  's|^create_container_timeout = .*|create_container_timeout = 1200|' \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml \
+  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
+
 # Point SNP config to the SNP-experimental QEMU binary (the standard QEMU
 # does not support SEV-SNP VM launch)
 RUN sed -i \
