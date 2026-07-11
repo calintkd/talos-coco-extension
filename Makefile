@@ -42,6 +42,11 @@ NVIDIA_VERSION := $(shell awk '$$1 == "version:" && $$2 != "v1alpha1" {print $$2
 BASE_IMG   := $(REGISTRY)/$(USERNAME)/talos-coco-extension:v$(BASE_VERSION)
 NVIDIA_IMG := $(REGISTRY)/$(USERNAME)/talos-coco-nvidia:v$(NVIDIA_VERSION)
 
+# --provenance/--sbom=false: emit a plain OCI manifest instead of buildx's
+# attestation-wrapped index — ghcr only reads the repo-linking
+# org.opencontainers.image.source LABEL (which grants CI push access) from
+# plain manifests, and the Talos imager consumes the image either way.
+BUILDX_FLAGS := --provenance=false --sbom=false
 BUILDX_OUT := $(if $(filter true,$(PUSH)),--push,--load)
 
 .PHONY: all images base nvidia installer-cpu installer-gpu iso \
@@ -58,13 +63,13 @@ print-versions:
 	@echo "TALOS_VERSION  = $(TALOS_VERSION)"
 
 base:
-	docker buildx build --platform $(PLATFORM) \
+	docker buildx build --platform $(PLATFORM) $(BUILDX_FLAGS) \
 	  --build-arg KATA_VERSION=$(KATA_VERSION) \
 	  -f extensions/coco/Dockerfile \
 	  -t $(BASE_IMG) $(BUILDX_OUT) extensions/coco/
 
 nvidia:
-	docker buildx build --platform $(PLATFORM) \
+	docker buildx build --platform $(PLATFORM) $(BUILDX_FLAGS) \
 	  --build-arg KATA_VERSION=$(KATA_VERSION) \
 	  -f extensions/coco-nvidia/Dockerfile \
 	  -t $(NVIDIA_IMG) $(BUILDX_OUT) extensions/coco-nvidia/
