@@ -10,8 +10,7 @@
 #   - kata-qemu-coco-dev : CoCo dev/test without TEE hardware
 #   - kata-clh           : Standard cloud-hypervisor (non-confidential)
 #                          (named `kata` before v1.3.0 — renamed to match
-#                          upstream kata-deploy naming; verified unused on
-#                          all known clusters 2026-07-11)
+#                          upstream kata-deploy naming)
 # =============================================================================
 
 # ----------------------------------------------------------------------------

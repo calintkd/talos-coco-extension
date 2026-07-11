@@ -135,6 +135,10 @@ RUN ldd containerd-shim-kata-v2 2>&1 | grep -q "not a dynamic executable" \
 # =============================================================================
 FROM scratch AS extension
 
+# Links the ghcr package to this repository (grants the repo's Actions
+# workflows push access and surfaces the README on the package page).
+LABEL org.opencontainers.image.source="https://github.com/calintkd/talos-coco-extension"
+
 # -- Extension manifest -------------------------------------------------------
 COPY manifest.yaml /manifest.yaml
 
@@ -145,7 +149,7 @@ COPY --from=kata-shim \
 
 # -- Hypervisors ---------------------------------------------------------------
 
-# Cloud Hypervisor (for standard "kata" runtime handler)
+# Cloud Hypervisor (for the "kata-clh" runtime handler)
 COPY --from=kata-static \
   /kata-static/opt/kata/bin/cloud-hypervisor \
   /rootfs/usr/local/bin/cloud-hypervisor
@@ -179,7 +183,7 @@ COPY --from=kata-static \
 
 # -- Guest images / initrd ----------------------------------------------------
 
-# Standard guest image (for cloud-hypervisor "kata" handler)
+# Standard guest image (for the cloud-hypervisor "kata-clh" handler)
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-containers/kata-containers.img \
   /rootfs/usr/local/share/kata-containers/kata-containers.img

@@ -33,10 +33,10 @@
 #     the pre-v1.3.0 values — check node headroom first.
 #
 # BREAKING (v1.3.0): the `kata` class/handler is now `kata-clh` (upstream
-# kata-deploy naming). Verified unused on all known clusters 2026-07-11.
-# If you carry pods on the old name: delete the old `kata` RuntimeClass,
-# apply this file, and update pod specs to `kata-clh` before upgrading
-# nodes to the v1.3.0 extension (which drops the old handler name).
+# kata-deploy naming). If you carry pods on the old name: delete the old
+# `kata` RuntimeClass, apply this file, and update pod specs to `kata-clh`
+# before upgrading nodes to the v1.3.0 extension (which drops the old
+# handler name).
 #
 # Do NOT ship this file via Talos cluster.inlineManifests: Talos bootstrap
 # manifests are create-only (machined never updates or deletes the objects
@@ -70,7 +70,7 @@ handler: kata-qemu-nvidia-gpu-snp
 overhead:
   podFixed:
     # GPU guest default_memory is 8192Mi (host-pinned) + VMM margin.
-    # Matches upstream kata-deploy (10240Mi since kata 3.25).
+    # Matches upstream kata-deploy (10240Mi since kata 3.28).
     memory: "10Gi"
     cpu: "1"
 scheduling:
@@ -101,7 +101,7 @@ metadata:
 handler: kata-clh
 overhead:
   podFixed:
-    memory: "160Mi"
+    memory: "130Mi"
     cpu: "250m"
 scheduling:
   nodeSelector:

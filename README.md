@@ -22,9 +22,9 @@ CUDA vectorAdd, and vLLM inference (validated 2026-07-09, Kata 3.32.0).
 | `patches/` | — | Machine-config patches per node role | — |
 
 Why two extensions instead of one: GPU-less nodes (control planes, CPU workers)
-skip the ~1.7 GB (uncompressed) NVIDIA guest payload — Talos extensions are
-squashfs images appended to the initramfs and resident in RAM — and the proven
-base artifact carries zero risk from GPU work. This mirrors how Talos itself
+skip the ~450 MB NVIDIA guest payload — Talos extensions are squashfs images
+appended to the initramfs and resident in RAM — and the proven base artifact
+carries zero risk from GPU work. This mirrors how Talos itself
 packages NVIDIA support (separate, version-paired `nvidia-*` extensions
 composed per node). Both extensions of a release share one version and one
 Kata release; `make check-versions` enforces the pairing.

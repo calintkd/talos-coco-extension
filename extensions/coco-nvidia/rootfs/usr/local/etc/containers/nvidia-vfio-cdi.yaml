@@ -27,17 +27,24 @@ container:
         - rbind
         - rw
     # Host /usr/local (ro) — for the base-extension presence check. The
-    # mount SOURCE must be /usr/local (not /usr/local/bin): base Talos
-    # guarantees /usr/local exists, while /usr/local/bin only exists when
+    # mount SOURCE must be /usr/local (not /usr/local/bin): /usr/local is
+    # guaranteed to exist wherever this service is loaded (this very spec
+    # file is installed under it), while /usr/local/bin only exists when
     # an extension ships files there — and machined pre-creates missing
     # bind sources with MkdirAll, which fails (EROFS) on the read-only
     # merged rootfs and would kill the service with a cryptic error in
     # exactly the missing-base case this guard is meant to report.
+    # Plain `bind` (NOT rbind) on purpose: an rbind would replicate the
+    # rw overlay machined mounts on this service's own rootfs (under
+    # /usr/local/lib/containers/) into the container, giving it a
+    # writable alias of its rootfs despite the ro root. A non-recursive
+    # bind copies only the read-only merged root — the guard target is a
+    # regular file there. Same shape as the official iscsi-tools mounts.
     - source: /usr/local
       destination: /usr/local
       type: bind
       options:
-        - rbind
+        - bind
         - ro
 depends:
   - service: cri

@@ -17,10 +17,10 @@
 #   kubectl create ns gpu-operator
 #   kubectl label ns gpu-operator pod-security.kubernetes.io/enforce=privileged
 # (On ArgoCD: put the label on the Namespace manifest / Application
-# syncPolicy.managedNamespaceMetadata.) Verified on talos-test 2026-06-18:
-# without the label the controller pod is never created (FailedCreate:
-# "violates PodSecurity baseline: hostPath volumes"); with it, ClusterPolicy
-# reaches state=ready and all components run.
+# syncPolicy.managedNamespaceMetadata.) Verified on a non-GPU test cluster
+# 2026-06-18: without the label the controller pod is never created
+# (FailedCreate: "violates PodSecurity baseline: hostPath volumes"); with
+# it, ClusterPolicy reaches state=ready and all components run.
 #
 #   kubectl create ns gpu-operator
 #   kubectl label ns gpu-operator pod-security.kubernetes.io/enforce=privileged
@@ -29,8 +29,8 @@
 #
 # On a non-GPU cluster this deploys inert (NFD finds no GPU; the GPU-specific
 # DaemonSets — sandbox-device-plugin, validator — never schedule) — that IS
-# the smoke test for deployability on Talos. Verified talos-test 2026-06-18:
-# ClusterPolicy ready, only operator + NFD (master/gc/3×worker) running.
+# the smoke test for deployability on Talos. Verified on a non-GPU test
+# cluster 2026-06-18: ClusterPolicy ready, only operator + NFD running.
 # =============================================================================
 
 # No host GPU driver, no host container toolkit — drivers live INSIDE the

@@ -8,7 +8,8 @@
 #      download between the two builds)
 #   2. Assembles the add-on extension (FROM scratch) with ONLY the NVIDIA
 #      bits: GPU+SNP Kata config, NVIDIA guest kernel, NVIDIA confidential
-#      guest image (~1.1 GB — Ubuntu noble + driver 595.58.03 + NVRC)
+#      guest image (~533 MiB in Kata 3.32.0 — Ubuntu noble + driver + NVRC;
+#      was ~1.1 GB in the 3.30.0 tarball)
 #
 # Everything else (QEMU SNP-experimental, virtiofsd, shim, OVMF AMDSEV.fd)
 # comes from the BASE extension — this add-on requires coco-kata-containers
@@ -62,7 +63,7 @@ RUN sed -i \
   's|^experimental_force_guest_pull = false|experimental_force_guest_pull = true|' \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-nvidia-gpu-snp.toml
 
-# Sanity gate — verified against the 3.30.0 tarball listing (2026-06-12):
+# Sanity gate — verified against the 3.32.0 tarball listing (2026-07-09):
 #  - the GPU+SNP TOML exists and (post-rewrite) references the
 #    SNP-experimental QEMU and the AMDSEV.fd firmware the BASE ships
 #  - the NVIDIA guest kernel + confidential image symlinks resolve
@@ -83,6 +84,10 @@ RUN test -f /kata-static/opt/kata/share/defaults/kata-containers/configuration-q
 # =============================================================================
 FROM scratch AS extension
 
+# Links the ghcr package to this repository (grants the repo's Actions
+# workflows push access and surfaces the README on the package page).
+LABEL org.opencontainers.image.source="https://github.com/calintkd/talos-coco-extension"
+
 # -- Extension manifest -------------------------------------------------------
 COPY manifest.yaml /manifest.yaml
 
@@ -91,12 +96,12 @@ COPY --from=kata-static \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-nvidia-gpu-snp.toml \
   /rootfs/usr/local/share/kata-containers/configuration-qemu-nvidia-gpu-snp.toml
 
-# -- NVIDIA guest kernel (6.18.15-nvidia-gpu; COPY dereferences the symlink) ---
+# -- NVIDIA guest kernel (version tracks the Kata release; COPY dereferences the symlink)
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-containers/vmlinuz-nvidia-gpu.container \
   /rootfs/usr/local/share/kata-containers/vmlinuz-nvidia-gpu.container
 
-# -- NVIDIA confidential guest image (~1.1 GB) ---------------------------------
+# -- NVIDIA confidential guest image (~533 MiB in Kata 3.32.0) -----------------
 # Ubuntu noble rootfs with NVIDIA driver 595.58.03 + NVRC init; dm-verity
 # root hash is baked into the TOML's kernel_verity_params.
 COPY --from=kata-static \

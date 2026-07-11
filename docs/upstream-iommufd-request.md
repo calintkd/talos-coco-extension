@@ -29,8 +29,9 @@ Current state in `kernel/build/config-amd64`: `# CONFIG_IOMMUFD is not set`;
 
 VFIO device passthrough into **confidential VMs** (AMD SEV-SNP, and TDX on the
 Intel side) requires the VFIO IOMMUFD character-device interface
-(`/dev/vfio/devices/vfioN`). QEMU refuses the legacy VFIO group interface for
-confidential guests:
+(`/dev/vfio/devices/vfioN`). The Kata Containers runtime refuses the legacy
+VFIO group interface for confidential guests
+(`src/runtime/virtcontainers/qemu.go`):
 
 ```
 ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>

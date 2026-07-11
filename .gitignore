@@ -9,25 +9,18 @@
 .idea/
 
 # Build artifacts
-_out/
+/_out/
 
-# Kubernetes
-kubeconfig
+# Local cluster credentials and configs (never committed)
+/kubeconfig
 *.kubeconfig
-
-# Talos
-talosconfig
-controlplane.yaml
-worker.yaml
+/talosconfig
 *.talosconfig
+/controlplane.yaml
+/worker.yaml
+/talos-*/
 
-# Environment-specific config directories
-talos-dev/
-talos-amd/
-talos-test/
-
-# Project-level AI agent guidance (must stay at repo root for Claude Code)
-CLAUDE.md
-
-# All operational docs, analyses, and POC kits — gitignored as a group
-ops/
+# Local working notes and operational scratch (untracked)
+/CLAUDE.md
+/.claude/
+/ops/

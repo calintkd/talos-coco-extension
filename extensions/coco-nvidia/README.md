@@ -41,7 +41,7 @@ service loudly in `talosctl services` instead of failing pods obscurely).
 | --- | --- | --- |
 | `/usr/local/share/kata-containers/configuration-qemu-nvidia-gpu-snp.toml` | 34 K | Kata config for SNP + GPU passthrough (path-rewritten, guest-pull enabled, dm-verity hash inline) |
 | `/usr/local/share/kata-containers/vmlinuz-nvidia-gpu.container` | ~8 M | NVIDIA guest kernel (version tracks the Kata release) |
-| `/usr/local/share/kata-containers/kata-containers-nvidia-gpu-confidential.img` | ~1.1 G | Ubuntu-noble guest rootfs with NVIDIA driver + NVRC (595.58.03 in Kata 3.30–3.32) |
+| `/usr/local/share/kata-containers/kata-containers-nvidia-gpu-confidential.img` | ~533 M | Ubuntu-noble guest rootfs with NVIDIA driver + NVRC (595.58.03 in Kata 3.30–3.32; the 3.30 image was ~1.1 G) |
 | `/etc/cri/conf.d/30-coco-nvidia.part` | — | containerd CRI handler drop-in (merges after the base's `20-coco.part`) |
 | `/usr/local/etc/containers/nvidia-vfio-cdi.yaml` | — | Extension service: VFIO CDI spec generator (runs every boot) + base-extension presence guard |
 | `/usr/local/lib/containers/nvidia-vfio-cdi/{busybox,nvidia-vfio-cdi-gen.sh}` | ~1 M | The service's container rootfs: static busybox runner + generator script |
@@ -51,18 +51,20 @@ The TOML references the base extension's QEMU (`qemu-system-x86_64-snp-experimen
 and OVMF (`/usr/local/share/ovmf/AMDSEV.fd`) — hence the base dependency.
 
 > ⚠️ Upstream ships `nvrc.smi.srs=1` in the TOML's `kernel_params` — NVRC marks the
-> GPU ready **without** GPU attestation (dev shortcut). Review with the attestation
-> owner before production use.
+> GPU ready **without** GPU attestation (dev shortcut). Review before production
+> use.
 
 ## Host requirements (hard prerequisites)
 
 ### 1. Custom Talos kernel with IOMMUFD
 
 Confidential guests require the VFIO **IOMMUFD cdev** interface
-(`/dev/vfio/devices/vfioN`) — QEMU refuses the legacy group node with
-`ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>`.
-**No stock Talos kernel enables IOMMUFD.** Build a custom kernel with exactly two
-config changes on `siderolabs/pkgs` (checkout the tag matching your Talos version):
+(`/dev/vfio/devices/vfioN`) — the Kata runtime refuses the legacy group node with
+`ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>`
+(`virtcontainers/qemu.go`). **No stock Talos kernel enables IOMMUFD.** Build a
+custom kernel with exactly two config changes on `siderolabs/pkgs` — check out
+the `PKGS` ref pinned in the Talos release's Makefile (e.g. Talos v1.13.5 pins
+`v1.13.0-36-g6b315f7`; there is no per-patch-release pkgs tag):
 
 ```
 CONFIG_IOMMUFD=y            # must be =y (VFIO_DEVICE_CDEV is bool, depends on it)
@@ -127,6 +129,9 @@ make installer-gpu     # GPU worker — custom IOMMUFD imager + base + add-on
 make installer-cpu     # CP / CPU worker — base only, stock imager/kernel
 ```
 
+> The custom imager image (`GPU_IMAGER`) must be pullable by your Docker
+> daemon — make the package public or `docker login` to its registry first.
+
 Equivalent manual GPU-worker invocation:
 
 ```bash
@@ -176,10 +181,12 @@ Small images run fine with the 8 GiB / 1 vCPU TOML defaults. The shipped
 | Handler fire | SNP-less node, labelled | containerd resolves handler, TOML parses, QEMU launch fails at the expected hardware boundary (no `/dev/sev`) — config plumbing proven | ✅ 2026-06-12 |
 | SNP no GPU | SNP node | full SNP launch path of the GPU config minus the VFIO device (`kata-qemu-snp` guest boots) | ✅ 2026-07-09 |
 | Full | SNP + H200 NVL | VFIO bind (IOMMUFD), NVRC driver injection, `nvidia-smi` in-guest, `conf-compute` CC ON/ready/PRODUCTION, CUDA vectorAdd, vLLM v0.24.0 inference | ✅ 2026-07-09 |
-| Guard service (v1.3.0-rc2) | any node with both extensions | `nvidia-vfio-cdi` still reaches Finished with the base-presence check + `/usr/local/bin` mount in place | ⬜ pending — gates rc2 → v1.3.0 promotion |
+| Guard service (v1.3.0-rc3) | any node with both extensions | `nvidia-vfio-cdi` still reaches Finished with the base-presence check + read-only `/usr/local` mount in place | ⬜ pending — gates rc3 → v1.3.0 promotion |
 | GPU attestation | SNP + GPU + KBS | remove `nvrc.smi.srs=1`, full GPU evidence chain | ⬜ open |
 
-**Release status**: `v1.3.0-rc2` = the proven `v1.3.0-rc1` content plus the
-base-presence guard in the CDI service (no changes to the runtime handler,
-config, or guest assets). Promote to `v1.3.0` after the guard row above goes
+**Release status**: `v1.3.0-rc3` = the proven `v1.3.0-rc1` content plus the
+base-presence guard in the CDI service (rc2), with the guard's `/usr/local`
+mount made non-recursive (`bind`, not `rbind`) so the container gets no
+writable alias of its own rootfs (rc3). No changes to the runtime handler,
+config, or guest assets. Promote to `v1.3.0` after the guard row above goes
 green on a live node.
