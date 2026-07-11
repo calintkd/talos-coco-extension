@@ -104,8 +104,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: coco-test-snp
-  annotations:
-    io.containerd.cri.v1.images/unpack: "false"   # guest-pull: image is pulled INSIDE the CVM
 spec:
   runtimeClassName: kata-qemu-snp                  # GPU: kata-qemu-nvidia-gpu-snp + nvidia.com/pgpu: "1"
   containers:

@@ -91,8 +91,11 @@ extension ships a symlink `/opt/kata → /usr/local`.
 
 `kata-qemu-snp` and `kata-qemu-coco-dev` use `shared_fs = "none"` with
 `experimental_force_guest_pull = true`: container images are pulled inside the
-guest VM, never shared from the host. Pods must carry the
-`io.containerd.cri.v1.images/unpack: "false"` annotation. Because the image is
+guest VM, never shared from the host. No pod annotation is required — the TOML
+setting alone activates guest-pull. (Earlier revisions documented an
+`io.containerd.cri.v1.images/unpack: "false"` annotation; it is inert — the
+string exists in neither containerd 2.2.x nor Kata 3.32.0, and pods run
+identically without it, verified on hardware 2026-07-11.) Because the image is
 pulled AND unpacked inside the guest during CreateContainerRequest,
 `create_container_timeout` is raised to 1200 s (kata's 60 s default times out
 on multi-GB images).
@@ -131,9 +134,8 @@ kvm_amd: SEV-SNP enabled (ASIDs 1 - 1005)
 
 ## Verify SEV-SNP attestation
 
-Deploy an Ubuntu pod on `kata-qemu-snp` (annotation
-`io.containerd.cri.v1.images/unpack: "false"`, command `sleep infinity`),
-exec in, then:
+Deploy an Ubuntu pod on `kata-qemu-snp` (command `sleep infinity`), exec in,
+then:
 
 ```bash
 # SEV-SNP active in the guest kernel?

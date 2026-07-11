@@ -158,7 +158,8 @@ docker run --rm -t -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/_out:/
    `/run/cdi/nvidia-vfio.yaml` (IOMMUFD cdev, kind `nvidia.com/pgpu`) on every boot.
    Check with `talosctl services` (`ext-nvidia-vfio-cdi` should reach Finished).
 7. Pod spec: `runtimeClassName: kata-qemu-nvidia-gpu-snp`, resource
-   `nvidia.com/pgpu: "1"`, annotation `io.containerd.cri.v1.images/unpack: "false"`.
+   `nvidia.com/pgpu: "1"`. No annotation needed — guest-pull is enabled by
+   the shipped TOML.
 
 ### Guest sizing for real workloads
 
@@ -181,12 +182,9 @@ Small images run fine with the 8 GiB / 1 vCPU TOML defaults. The shipped
 | Handler fire | SNP-less node, labelled | containerd resolves handler, TOML parses, QEMU launch fails at the expected hardware boundary (no `/dev/sev`) — config plumbing proven | ✅ 2026-06-12 |
 | SNP no GPU | SNP node | full SNP launch path of the GPU config minus the VFIO device (`kata-qemu-snp` guest boots) | ✅ 2026-07-09 |
 | Full | SNP + H200 NVL | VFIO bind (IOMMUFD), NVRC driver injection, `nvidia-smi` in-guest, `conf-compute` CC ON/ready/PRODUCTION, CUDA vectorAdd, vLLM v0.24.0 inference | ✅ 2026-07-09 |
-| Guard service (v1.3.0-rc3) | any node with both extensions | `nvidia-vfio-cdi` still reaches Finished with the base-presence check + read-only `/usr/local` mount in place | ⬜ pending — gates rc3 → v1.3.0 promotion |
+| Guard service | node with both extensions | `nvidia-vfio-cdi` reaches Finished with the base-presence check + read-only `/usr/local` mount in place; CDI spec written; `nvidia-smi` green in the GPU CVM on the same boot | ✅ 2026-07-11 (H200 NVL) |
 | GPU attestation | SNP + GPU + KBS | remove `nvrc.smi.srs=1`, full GPU evidence chain | ⬜ open |
 
-**Release status**: `v1.3.0-rc3` = the proven `v1.3.0-rc1` content plus the
-base-presence guard in the CDI service (rc2), with the guard's `/usr/local`
-mount made non-recursive (`bind`, not `rbind`) so the container gets no
-writable alias of its own rootfs (rc3). No changes to the runtime handler,
-config, or guest assets. Promote to `v1.3.0` after the guard row above goes
-green on a live node.
+**Release status**: `v1.3.0` = the hardware-proven `v1.3.0-rc1` content plus
+the base-presence guard in the CDI service (non-recursive read-only
+`/usr/local` bind). Guard + full GPU path validated on H200 NVL 2026-07-11.
