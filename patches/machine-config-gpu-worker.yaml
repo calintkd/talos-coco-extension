@@ -1,0 +1,47 @@
+# =============================================================================
+# Talos machine configuration patch — GPU worker node (SNP + VFIO passthrough)
+# =============================================================================
+# Apply on GPU worker nodes ONLY (CP / CPU-worker nodes use
+# machine-config-snp.yaml; this file is a superset — do not apply both):
+#   talosctl gen config ... --config-patch @patches/machine-config-gpu-worker.yaml
+#   (or talosctl patch mc on a live node — module changes need a reboot)
+#
+# The GPU never gets a host driver: the device is bound to vfio-pci at boot
+# via the vfio_pci module parameter below. The NVIDIA driver + NVRC run inside
+# the confidential guest VM (shipped by the coco-kata-nvidia-gpu extension).
+#
+# ⚠ Do NOT use machine.install.extraKernelArgs for the vfio binding:
+#   - Talos v1.13 UKI/systemd-boot IGNORES install.extraKernelArgs
+#     ("extra kernel arguments are not supported when booting using SDBoot"),
+#     and the v1.13.5 installer REJECTS it in combination with
+#     grubUseUKICmdline. Verified on real hardware 2026-07-08.
+#   - The machine.kernel.modules parameters below are the working method.
+#   - If a platform genuinely needs cmdline args, bake them at image-build
+#     time via `imager ... --extra-kernel-arg`, not via machine config.
+#   - modprobe.blacklist / amd_iommu=on / iommu=pt are unnecessary: Talos
+#     ships no host NVIDIA driver (nothing to blacklist) and the AMD IOMMU
+#     is active by default when enabled in firmware (verified: IOMMU groups
+#     form and VFIO passthrough works without any of these args).
+# =============================================================================
+
+machine:
+  kernel:
+    modules:
+      # vfio_pci with ids= claims the GPU at module load — the UKI-safe
+      # replacement for vfio-pci.ids on the kernel cmdline.
+      # PLACEHOLDER vendor:device ID — verify against `lspci -nn` on the
+      # actual GPU box before use. Known IDs:
+      #   10de:2331  H100 PCIe
+      #   10de:233b  H200 NVL
+      # Multiple GPUs/models: ids=10de:2331,10de:233b
+      - name: vfio_pci
+        parameters:
+          - ids=10de:233b
+      - name: vfio_iommu_type1  # legacy VFIO IOMMU backend (harmless alongside IOMMUFD)
+      - name: kvm_amd           # AMD SVM/SEV (same as base SNP patch)
+      - name: ccp               # AMD Cryptographic Co-processor (/dev/sev)
+
+  nodeLabels:
+    katacontainers.io/kata-runtime: "true"
+    coco.confidentialcontainers.org/snp: "true"          # SEV-SNP capable
+    nvidia.com/gpu.workload.config: "vm-passthrough"     # GPU via VFIO, no host driver

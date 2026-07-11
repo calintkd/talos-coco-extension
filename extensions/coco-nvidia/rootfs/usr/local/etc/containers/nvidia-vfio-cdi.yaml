@@ -1,0 +1,44 @@
+# Talos extension service: generate the VFIO CDI spec for vfio-bound NVIDIA
+# GPUs at boot (/run/cdi is tmpfs — must be re-created every boot).
+# restart: untilSuccess -> retries until the GPU is bound to vfio-pci
+# (machine.kernel.modules vfio_pci ids=... happens early in boot), then exits.
+# Also guards the base-extension dependency: the script fails loudly if the
+# base extension's SNP QEMU is absent from /usr/local/bin.
+#
+# Container rootfs = /usr/local/lib/containers/nvidia-vfio-cdi (Talos derives
+# it from `name`); entrypoint/args paths are relative to that root.
+name: nvidia-vfio-cdi
+container:
+  entrypoint: /busybox
+  args:
+    - sh
+    - /nvidia-vfio-cdi-gen.sh
+  mounts:
+    - source: /sys
+      destination: /sys
+      type: bind
+      options:
+        - rbind
+        - ro
+    - source: /run
+      destination: /run
+      type: bind
+      options:
+        - rbind
+        - rw
+    # Host /usr/local (ro) — for the base-extension presence check. The
+    # mount SOURCE must be /usr/local (not /usr/local/bin): base Talos
+    # guarantees /usr/local exists, while /usr/local/bin only exists when
+    # an extension ships files there — and machined pre-creates missing
+    # bind sources with MkdirAll, which fails (EROFS) on the read-only
+    # merged rootfs and would kill the service with a cryptic error in
+    # exactly the missing-base case this guard is meant to report.
+    - source: /usr/local
+      destination: /usr/local
+      type: bind
+      options:
+        - rbind
+        - ro
+depends:
+  - service: cri
+restart: untilSuccess

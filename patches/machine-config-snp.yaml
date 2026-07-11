@@ -1,0 +1,27 @@
+# =============================================================================
+# Talos machine configuration patch — SNP node (control plane or CPU worker)
+# =============================================================================
+# For every node that runs the base CoCo extension. GPU workers use
+# machine-config-gpu-worker.yaml INSTEAD (it is a superset of this file).
+#
+# Apply with:
+#   talosctl gen config ... --config-patch @patches/machine-config-snp.yaml
+#
+# The extensions themselves are NOT listed here: they are baked into the
+# installer image at build time (`make installer-cpu` / imager
+# --system-extension-image ...) and delivered via `talosctl upgrade --image`.
+# =============================================================================
+
+machine:
+  # Label the node for RuntimeClass scheduling (deploy/runtime-classes.yaml
+  # selects on these). machine.nodeLabels are re-applied on every boot and
+  # survive re-provisioning, unlike `kubectl label`.
+  nodeLabels:
+    katacontainers.io/kata-runtime: "true"
+    coco.confidentialcontainers.org/snp: "true"    # only on SEV-SNP bare-metal
+
+  # Required: KVM + SEV kernel modules
+  kernel:
+    modules:
+      - name: kvm_amd
+      - name: ccp          # AMD Cryptographic Co-processor (provides /dev/sev)

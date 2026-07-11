@@ -1,0 +1,90 @@
+# =============================================================================
+# NVIDIA GPU Operator — Helm values for Talos GPU worker (VFIO + CoCo)
+# =============================================================================
+# Chart: nvidia/gpu-operator, pin v26.3.3 (verified on Talos 2026-07-09; the
+# upgrade from v25.10.1 needs `--disable-openapi-validation` because the chart
+# defaults to operator.upgradeCRD=true).
+# NOTE v26.3+ adds `sandboxWorkloads.mode: "kata"` — it deploys the same
+# nvidia-sandbox-device-plugin we pin below (upstream converged on it);
+# candidate to replace the explicit pin after evaluation.
+# Talos principle: the operator must NOT touch the host — host pieces come
+# from the talos-coco-nvidia system extension + machine config instead.
+#
+# ⚠ REQUIRED: the gpu-operator namespace MUST carry the privileged Pod
+# Security label — Talos enforces `baseline` PSA cluster-wide by default, and
+# the operator/NFD-worker mount hostPath volumes (forbidden under baseline).
+# `helm --create-namespace` does NOT set it, so pre-create the namespace:
+#   kubectl create ns gpu-operator
+#   kubectl label ns gpu-operator pod-security.kubernetes.io/enforce=privileged
+# (On ArgoCD: put the label on the Namespace manifest / Application
+# syncPolicy.managedNamespaceMetadata.) Verified on talos-test 2026-06-18:
+# without the label the controller pod is never created (FailedCreate:
+# "violates PodSecurity baseline: hostPath volumes"); with it, ClusterPolicy
+# reaches state=ready and all components run.
+#
+#   kubectl create ns gpu-operator
+#   kubectl label ns gpu-operator pod-security.kubernetes.io/enforce=privileged
+#   helm install gpu-operator nvidia/gpu-operator -n gpu-operator \
+#     --version v26.3.3 -f gpu-operator-values-talos.yaml --disable-openapi-validation
+#
+# On a non-GPU cluster this deploys inert (NFD finds no GPU; the GPU-specific
+# DaemonSets — sandbox-device-plugin, validator — never schedule) — that IS
+# the smoke test for deployability on Talos. Verified talos-test 2026-06-18:
+# ClusterPolicy ready, only operator + NFD (master/gc/3×worker) running.
+# =============================================================================
+
+# No host GPU driver, no host container toolkit — drivers live INSIDE the
+# Kata guest VM (NVRC + driver 595.58.03 in the guest image). Sidero's
+# nvidia-container-toolkit extension is the host-driver pattern — not used.
+driver:
+  enabled: false
+toolkit:
+  enabled: false
+
+sandboxWorkloads:
+  enabled: true
+  defaultWorkload: vm-passthrough
+
+# Installs Kata runtime artifacts on the HOST (/opt/...) — impossible and
+# unwanted on Talos; the talos-coco-nvidia system extension replaces this.
+kataManager:
+  enabled: false
+
+# Binds the GPU to vfio-pci via host-side scripts — replaced on Talos by
+# machine.kernel.modules (vfio_pci with ids=... parameter) in
+# patches/machine-config-gpu-worker.yaml. (NOT install.extraKernelArgs —
+# ignored/rejected on Talos v1.13 UKI boot.)
+vfioManager:
+  enabled: false
+
+# Sets GPU Confidential Computing mode. Runs as a privileged pod (in-band
+# PCIe programming). Kept DISABLED — the proven path (verified 2026-07-09) is
+# setting CC mode out-of-band with NVIDIA gpu-admin-tools before workloads:
+#   nvidia_gpu_tools.py --gpu-bdf=<bdf> --set-cc-mode=on --reset-after-cc-mode-switch
+# CC mode is a persistent per-GPU setting. ⚠ A CC-capable GPU with CC mode
+# OFF makes confidential guests stall silently forever (driver handshake) —
+# see the README "GPU CC mode" section.
+ccManager:
+  enabled: false
+
+# Exposes nvidia.com/pgpu on nodes with VFIO-bound GPUs — required.
+# ⚠ PIN the nvidia-sandbox-device-plugin (CDI-aware): the operator default
+# (kubevirt-gpu-device-plugin) injects the legacy VFIO GROUP node
+# (/dev/vfio/<group>) and advertises the GPU by MODEL name — confidential
+# guests then fail with "ConfidentialGuest needs IOMMUFD". This plugin
+# returns CDI refs (resolved by the nvidia-vfio-cdi extension service to the
+# IOMMUFD cdev) and P_GPU_ALIAS=pgpu gives the portable resource name
+# nvidia.com/pgpu (identical across H100 and H200 deployments).
+# Verified fix 2026-07-08/09.
+sandboxDevicePlugin:
+  enabled: true
+  repository: nvcr.io/nvidia/cloud-native
+  image: nvidia-sandbox-device-plugin
+  version: v0.0.1
+  env:
+    - name: P_GPU_ALIAS
+      value: pgpu
+
+nfd:
+  enabled: true
+  nodefeaturerules: true

@@ -1,0 +1,108 @@
+# =============================================================================
+# Kubernetes RuntimeClass manifests — ALL CoCo runtime handlers
+# =============================================================================
+# Apply ONCE per cluster, after the extension(s) are installed:
+#   kubectl apply -f deploy/runtime-classes.yaml
+#
+# This single file covers every handler the two extensions register (parity
+# with the upstream CoCo Helm chart, which creates all its runtime classes by
+# default). It is safe to apply on any cluster, including clusters without
+# SNP or GPU nodes: each class carries a scheduling.nodeSelector, so pods
+# requesting a class the cluster can't satisfy stay Pending instead of
+# crashing. Node labels come from patches/machine-config-*.yaml.
+#
+# | Class                    | Requires node labels                          |
+# |--------------------------|-----------------------------------------------|
+# | kata-qemu-snp            | kata-runtime + snp                            |
+# | kata-qemu-nvidia-gpu-snp | kata-runtime + snp + gpu vm-passthrough       |
+# | kata-qemu-coco-dev       | kata-runtime                                  |
+# | kata-clh                 | kata-runtime                                  |
+#
+# Overhead semantics (matters for capacity planning):
+#   - `overhead.podFixed` is added to the pod's resource accounting at
+#     ADMISSION time. Changing a RuntimeClass affects only NEW pods.
+#   - Values follow upstream kata-deploy: guest default_memory (2048 MiB for
+#     kata-qemu-snp, 8192 MiB for the GPU class — SNP guest memory is fully
+#     host-pinned, no ballooning) plus VMM margin.
+#   - Pods that raise guest RAM via the
+#     io.katacontainers.config.hypervisor.default_memory annotation exceed
+#     this fixed overhead — set the container memory request/limit to match
+#     the annotated guest size on such pods.
+#   - Rolling this file onto a cluster with many existing SNP pods raises
+#     the accounted usage of every REPLACED pod by ~1.9 GiB + 0.75 CPU vs
+#     the pre-v1.3.0 values — check node headroom first.
+#
+# BREAKING (v1.3.0): the `kata` class/handler is now `kata-clh` (upstream
+# kata-deploy naming). Verified unused on all known clusters 2026-07-11.
+# If you carry pods on the old name: delete the old `kata` RuntimeClass,
+# apply this file, and update pod specs to `kata-clh` before upgrading
+# nodes to the v1.3.0 extension (which drops the old handler name).
+#
+# Do NOT ship this file via Talos cluster.inlineManifests: Talos bootstrap
+# manifests are create-only (machined never updates or deletes the objects
+# once created), so later changes — e.g. overhead tuning — would silently
+# never reach the cluster. `kubectl apply` / GitOps keeps them in sync.
+# =============================================================================
+
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-qemu-snp
+handler: kata-qemu-snp
+overhead:
+  podFixed:
+    # default_memory 2048Mi is fully pinned host RAM for SNP guests; cpu
+    # covers the vCPU + QEMU/virtiofsd threads. Matches upstream kata-deploy.
+    memory: "2Gi"
+    cpu: "1"
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+    coco.confidentialcontainers.org/snp: "true"
+
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-qemu-nvidia-gpu-snp
+handler: kata-qemu-nvidia-gpu-snp
+overhead:
+  podFixed:
+    # GPU guest default_memory is 8192Mi (host-pinned) + VMM margin.
+    # Matches upstream kata-deploy (10240Mi since kata 3.25).
+    memory: "10Gi"
+    cpu: "1"
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+    coco.confidentialcontainers.org/snp: "true"
+    nvidia.com/gpu.workload.config: "vm-passthrough"
+
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-qemu-coco-dev
+handler: kata-qemu-coco-dev
+overhead:
+  podFixed:
+    memory: "160Mi"
+    cpu: "250m"
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-clh
+handler: kata-clh
+overhead:
+  podFixed:
+    memory: "160Mi"
+    cpu: "250m"
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
