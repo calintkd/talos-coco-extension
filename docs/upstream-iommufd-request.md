@@ -1,87 +1,125 @@
-# Draft: siderolabs/pkgs issue — enable CONFIG_IOMMUFD + CONFIG_VFIO_DEVICE_CDEV
+# Upstream siderolabs/pkgs — enable CONFIG_IOMMUFD + CONFIG_VFIO_DEVICE_CDEV
 
-Status: DRAFT — not yet filed. File against https://github.com/siderolabs/pkgs
-(kernel config lives at `kernel/build/config-amd64`). No existing issue or PR
-mentions IOMMUFD anywhere in the siderolabs org (searched 2026-07-11).
+Status: READY TO FILE — not yet filed. Strategy: **single self-contained PR
+against `main`, no separate issue** (maintainer history: the closest analog —
+community SEV-SNP `=y` PR — was PR-only and merged in under a day; issues earn
+"PR's welcome" round-trips). No existing issue/PR mentions IOMMUFD anywhere in
+the siderolabs org.
 
 If accepted, GPU-capable Confidential Containers work on the stock Talos
 kernel/imager and the custom-imager step in this repo disappears.
 
+## Pre-verified against their gates (2026-07-12)
+
+- **CI `check-dirty`**: byte-clean — the proposed `config-amd64` was verified
+  by running their `make kernel-olddefconfig` (their kernel container,
+  pkgs@main) with zero resulting diff.
+- **Hardening gate**: their kernel build runs `kernel-hardening-checker` with
+  an enforcing filter as a build step; kernels with these options enabled
+  build through it (verified empirically, both `=y` and `=m` variants).
+  Neither that tool nor KSPP has any IOMMUFD rule.
+- **Size**: `=y` costs +48 KiB compressed vmlinuz (+0.24%); measured against
+  the same pkgs base commit.
+- **`=m` mechanism** (why built-in): `iommufd.ko` builds and lands in the
+  kernel package, but the Talos rootfs installs only allowlisted modules
+  (`hack/modules-amd64.txt` — carries the four vfio modules, no iommufd), so
+  `vfio.ko` fails with `Unknown symbol iommufd_*`. `=m` therefore needs a
+  companion siderolabs/talos allowlist change; `=y` is one file in pkgs.
+  Proven on hardware 2026-07-12 (deploy + rollback).
+- **Conform policy**: commit must be conventional-commit (`feat:` — `kernel:`
+  fails their type list), ≤89-char lowercase imperative header, body, real DCO
+  `Signed-off-by`, and GPG/SSH-signed with the author's own verified key.
+  `gpg-identity` may show red while open — maintainers amend + re-sign at
+  merge (observed on merged external PRs); keep "allow edits by maintainers"
+  on. Do NOT mention this in the PR.
+
+## Filing steps (requires the author's signing key — manual)
+
+1. Fork siderolabs/pkgs; branch from `main`.
+2. Apply the config change: set `CONFIG_IOMMUFD=y` + `CONFIG_VFIO_DEVICE_CDEV=y`
+   and regenerate with `make kernel-olddefconfig` (net delta = 5 symbols:
+   the two set + auto-selected `IOMMUFD_DRIVER`, `IOMMUFD_DRIVER_CORE`,
+   `INTERVAL_TREE_SPAN_ITER`). Touch only `kernel/build/config-amd64`.
+3. Commit with the message below (GPG-signed, real `Signed-off-by`), push,
+   open the PR with the body below.
+
 ---
 
-**Title**: kernel: enable CONFIG_IOMMUFD and CONFIG_VFIO_DEVICE_CDEV
-
-**Body**:
-
-## Feature request
-
-Enable two kernel config options on amd64:
+## Commit message
 
 ```
-CONFIG_IOMMUFD=y
-CONFIG_VFIO_DEVICE_CDEV=y
+feat: enable CONFIG_IOMMUFD and CONFIG_VFIO_DEVICE_CDEV
+
+Enable the VFIO IOMMUFD character-device interface
+(/dev/vfio/devices/vfioN), required for VFIO device passthrough into
+confidential VMs (AMD SEV-SNP / Intel TDX). The Kata Containers runtime
+refuses the legacy VFIO group interface for confidential guests
+("ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>"), so
+device passthrough into a confidential guest cannot start without it.
+
+IOMMUFD is built in (=y): as a module, vfio.ko gains a hard dependency
+on iommufd.ko, which is not in the Talos rootfs module allowlist, so
+=m would additionally require a siderolabs/talos change
+(hack/modules-{amd64,arm64}.txt). Built-in keeps this a single-file
+change; the legacy VFIO group interface is unchanged.
+
+Enabling IOMMUFD=y auto-selects IOMMUFD_DRIVER, IOMMUFD_DRIVER_CORE,
+and INTERVAL_TREE_SPAN_ITER.
+
+Signed-off-by: <REAL NAME> <REAL EMAIL>
 ```
 
-Current state in `kernel/build/config-amd64`: `# CONFIG_IOMMUFD is not set`;
-`CONFIG_VFIO_DEVICE_CDEV` is not emitted (it depends on IOMMUFD).
+## PR body
 
-## Use case
-
-VFIO device passthrough into **confidential VMs** (AMD SEV-SNP, and TDX on the
-Intel side) requires the VFIO IOMMUFD character-device interface
-(`/dev/vfio/devices/vfioN`). The Kata Containers runtime refuses the legacy
-VFIO group interface for confidential guests
+```markdown
+Enables the VFIO IOMMUFD character-device interface
+(`/dev/vfio/devices/vfioN`) so VFIO device passthrough into confidential VMs
+works on the stock Talos kernel. The Kata Containers runtime refuses the
+legacy VFIO group interface for confidential guests
 (`src/runtime/virtcontainers/qemu.go`):
 
+    ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>
+
+This unblocks confidential Kata pods with device passthrough on Talos — e.g.
+the in-catalog `kata-containers` system extension with an NVIDIA GPU passed
+into an SEV-SNP guest — continuing the confidential-computing enablement from
+#1396 (SEV-SNP) and #1276 (AMD_MEM_ENCRYPT). Rebinding devices to `vfio-pci`
+is already first-class in Talos via `PCIDriverRebindConfig`; for confidential
+guests the kernel-side cdev interface is the missing piece.
+
+### Config delta
+
+`config-amd64` regenerated with `make kernel-olddefconfig` after setting
+`CONFIG_IOMMUFD=y` + `CONFIG_VFIO_DEVICE_CDEV=y`; the net change is 5 symbols:
+`VFIO_DEVICE_CDEV` and `IOMMUFD` (set), plus auto-selected `IOMMUFD_DRIVER`,
+`IOMMUFD_DRIVER_CORE`, and `INTERVAL_TREE_SPAN_ITER`. `VFIO_GROUP=y` and the
+legacy container path are unchanged, and `IOMMUFD_VFIO_CONTAINER` stays off
+(it depends on `!VFIO_CONTAINER`). `/dev/iommu` is a root-only 0660 misc
+device — stricter than the 0666 `/dev/vfio/vfio` already enabled — and the
+build's `kernel-hardening-checker` gate still passes (neither it nor KSPP has
+a rule against IOMMUFD).
+
+### Why `=y` rather than `=m`
+
+Tested both on Talos v1.13.5. With `=m`, `vfio.ko` is built with the iommufd
+glue (`drivers/vfio/iommufd.c`) and hard-depends on iommufd's exported
+symbols, but `iommufd.ko` is not in the Talos rootfs module allowlist
+(`hack/modules-amd64.txt` carries the vfio stack, no iommufd entry) — so the
+vfio modules fail to load with `Unknown symbol iommufd_*`. `=m` therefore
+needs a companion siderolabs/talos allowlist change (after which depmod would
+auto-load it), while `=y` is this single file. Happy to switch this PR to the
+`=m` + allowlist pair if you prefer modular.
+
+### Testing
+
+Built this kernel and ran it on a Talos v1.13.5 bare-metal AMD SEV-SNP node
+with an NVIDIA H200 passed through to a Kata confidential guest:
+`/dev/vfio/devices/vfio0` present, guest boots, `nvidia-smi` works inside the
+CVM. A stock kernel reproduces the `ConfidentialGuest needs IOMMUFD` failure.
+Cost: +48 KiB compressed vmlinuz (+0.24%).
+
+amd64 only — the validated confidential-VM stack is SEV-SNP; arm64 (SMMUv3
+supports iommufd) can follow identically if you want parity. If this is
+eligible for a `release-1.13` cherry-pick that would be welcome, but no
+urgency.
 ```
-ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>
-```
-
-Concretely: Kata Containers / Confidential Containers pods with GPU
-passthrough (`kata-qemu-nvidia-gpu-snp` runtime class, NVIDIA Hopper GPUs in
-confidential-computing mode) cannot start on Talos today. With only these two
-config changes on an otherwise stock Talos kernel, the full stack works — we
-run SEV-SNP guests with NVIDIA H100/H200 VFIO passthrough (GPU driver inside
-the guest) on Talos v1.13 with a custom-built kernel that differs from stock
-by exactly these two lines.
-
-## Why `=y` and not `=m`
-
-`CONFIG_IOMMUFD` is tristate, so `=m` looks preferable. We tested it on
-Talos v1.13.5 (2026-07-12) and it does **not** work, for a Talos-specific
-packaging reason:
-
-- With `CONFIG_IOMMUFD=m`, `CONFIG_VFIO_DEVICE_CDEV=y` is compiled into
-  `vfio.ko`, which then hard-depends on iommufd's exported symbols
-  (`iommufd_device_bind`, `iommufd_access_create`, …).
-- The built `iommufd.ko` is **not included in the Talos module tree** — on a
-  node running the `=m` kernel, `machined`'s `KernelModuleSpecController`
-  reports `error loading module "iommufd": module not found`, and
-  `/usr/lib/modules/<ver>/kernel/drivers/iommu/iommufd/` is absent.
-- Consequently `vfio.ko` fails to load with `Unknown symbol iommufd_*`, the
-  whole `vfio`/`vfio_pci` stack fails (`vfio_pci: Unknown symbol
-  vfio_pci_core_*`), `/dev/vfio/devices/` is never created, and confidential
-  GPU passthrough cannot start. Adding the modules to `machine.kernel.modules`
-  in dependency order does not help — the `iommufd.ko` file simply isn't
-  packaged.
-
-`CONFIG_IOMMUFD=y` sidesteps this entirely: the iommufd core is in `vmlinux`,
-`vfio.ko` resolves its symbols against the built-in kernel, and the cdev
-interface comes up at boot. This is the configuration we run in production.
-(If `=m` is preferred on your side, it would additionally require packaging
-`iommufd.ko` into the installer's module set — happy to test that variant if
-you point us at the right place.)
-
-## Impact on existing users
-
-None expected:
-
-- The legacy VFIO group interface remains available and default
-  (`VFIO_GROUP=y` stays); userspace that opens `/dev/vfio/<group>` is
-  unaffected. The cdev interface is additive.
-- `VFIO_DEVICE_CDEV` is a bool compiled into the existing `vfio` module;
-  `IOMMUFD=y` adds the iommufd core (built-in). Size cost is small.
-- iommufd is the kernel's designated successor to the legacy VFIO container
-  API and is required by the Kata runtime for confidential-guest passthrough.
-
-Happy to send the PR if this is acceptable.
