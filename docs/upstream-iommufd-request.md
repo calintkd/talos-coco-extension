@@ -1,10 +1,13 @@
 # Upstream siderolabs/pkgs — enable CONFIG_IOMMUFD + CONFIG_VFIO_DEVICE_CDEV
 
-Status: READY TO FILE — not yet filed. Strategy: **single self-contained PR
-against `main`, no separate issue** (maintainer history: the closest analog —
-community SEV-SNP `=y` PR — was PR-only and merged in under a day; issues earn
-"PR's welcome" round-trips). No existing issue/PR mentions IOMMUFD anywhere in
-the siderolabs org.
+Status: **FILED 2026-07-13 as https://github.com/siderolabs/pkgs/pull/1608**
+(OPEN, awaiting maintainer). Strategy used: single self-contained PR against
+`main`, no separate issue. On filing: 10/11 conform checks green
+(`conform/commit/gpg` PASS via our own key); `conform/commit/gpg-identity`
+FAIL and GitHub "Verified" badge false (`bad_email`, noreply+GPG limitation) —
+both expected for an external PR and cleared when a maintainer re-signs at
+merge (matches precedent #1396/#1356/#1508). Nothing to action our side; watch
+the PR for the "can we make this a module?" question (pre-answered in the body).
 
 If accepted, GPU-capable Confidential Containers work on the stock Talos
 kernel/imager and the custom-imager step in this repo disappears.
