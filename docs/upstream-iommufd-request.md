@@ -80,12 +80,13 @@ legacy VFIO group interface for confidential guests
 
     ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>
 
-This unblocks confidential Kata pods with device passthrough on Talos — e.g.
-the in-catalog `kata-containers` system extension with an NVIDIA GPU passed
-into an SEV-SNP guest — continuing the confidential-computing enablement from
-#1396 (SEV-SNP) and #1276 (AMD_MEM_ENCRYPT). Rebinding devices to `vfio-pci`
-is already first-class in Talos via `PCIDriverRebindConfig`; for confidential
-guests the kernel-side cdev interface is the missing piece.
+This extends the Kata-on-Talos pattern — already shipped as the in-catalog
+`kata-containers` extension (non-confidential today) — to confidential guests
+with device passthrough, e.g. an NVIDIA GPU passed into an SEV-SNP guest,
+continuing the confidential-computing enablement from #1396 (SEV-SNP) and
+#1276 (AMD_MEM_ENCRYPT). Rebinding devices to `vfio-pci` is already
+first-class in Talos via `PCIDriverRebindConfig`; for confidential guests the
+kernel-side cdev interface is the missing piece.
 
 ### Config delta
 
