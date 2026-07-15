@@ -20,7 +20,14 @@ machine:
     katacontainers.io/kata-runtime: "true"
     coco.confidentialcontainers.org/snp: "true"    # only on SEV-SNP bare-metal
 
-  # Required: KVM + SEV kernel modules
+  # KVM + SEV. NOTE these are inert on a stock Talos kernel: CONFIG_KVM_AMD,
+  # CONFIG_KVM_AMD_SEV and CONFIG_CRYPTO_DEV_CCP are all built in (=y), so both
+  # initialise during kernel init, before machined reads this config — SNP works
+  # with or without these lines (verified on EPYC 9355: neither appears in
+  # /proc/modules, and dmesg shows `kvm_amd: SEV-SNP enabled` and `ccp: sev
+  # enabled` seconds before machined starts). They are kept as a declaration of
+  # intent, and as insurance if a future Talos kernel builds either as =m.
+  # Do not read their presence here as the reason SNP is available.
   kernel:
     modules:
       - name: kvm_amd

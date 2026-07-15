@@ -16,8 +16,8 @@ CUDA vectorAdd, and vLLM inference (validated 2026-07-09, Kata 3.32.0).
 
 | Artifact | Extension name | Provides | Compressed size |
 | --- | --- | --- | --- |
-| `extensions/coco/` → `ghcr.io/<org>/talos-coco-extension` | `coco-kata-containers` | Kata shim (static rebuild), SNP-experimental QEMU, standard QEMU, virtiofsd, confidential guest kernel + image, OVMF, handlers `kata-qemu-snp` / `kata-qemu-coco-dev` | ~198 MB |
-| `extensions/coco-nvidia/` → `ghcr.io/<org>/talos-coco-nvidia` | `coco-kata-nvidia-gpu` | Handler `kata-qemu-nvidia-gpu-snp`: NVIDIA guest kernel + confidential guest image (driver + NVRC), GPU+SNP Kata config, boot-time VFIO CDI spec generator service | ~450 MB |
+| `extensions/coco/` → `ghcr.io/<org>/talos-coco-extension` | `coco-kata-containers` | Kata shim (static rebuild), QEMU + its datadir, virtiofsd, confidential guest kernel + image, AMDSEV.fd OVMF, handlers `kata-qemu-snp` / `kata-qemu-coco-dev` | ~160 MB |
+| `extensions/coco-nvidia/` → `ghcr.io/<org>/talos-coco-nvidia` | `coco-kata-nvidia-gpu` | Handler `kata-qemu-nvidia-gpu-snp`: NVIDIA guest kernel + confidential guest image (driver + NVRC), GPU+SNP Kata config, SNP-experimental QEMU + datadir, boot-time VFIO CDI spec generator service | ~488 MB |
 | `deploy/` | — | `runtime-classes.yaml` (all three RuntimeClasses, apply once), NVIDIA GPU Operator values for Talos | — |
 | `patches/` | — | Machine-config patches per node role | — |
 
@@ -128,9 +128,27 @@ kernel, GPU CC mode, CDI service, guest sizing, validation ladder).
   kernel + imager rebuilt for that Talos release first.
 - Never upgrade more than one node at a time; keep etcd quorum.
 
+### Breaking changes in v1.4.0
+
+- **RuntimeClass/handler `kata-clh` is removed**, along with the whole Cloud
+  Hypervisor payload. Non-confidential Kata on Cloud Hypervisor is what the
+  official `siderolabs/kata-containers` extension provides — install it
+  alongside if you need it. **Before upgrading nodes**: delete any leftover
+  `kata-clh` RuntimeClass and move pods off it, or they will stay Pending
+  against a handler no node registers.
+- `kata-qemu-snp` now runs on the standard `qemu-system-x86_64`, which is
+  upstream Kata's default for that config. Earlier releases rewrote it to
+  `qemu-system-x86_64-snp-experimental`; that build is now shipped by the GPU
+  add-on, which is the only thing whose config names it. No pod-visible
+  change — SNP guests are launched identically.
+- Base extension is ~198 MB → **~160 MB**; the add-on grows by the same
+  payload. Net effect: control-plane and CPU-worker nodes carry ~38 MB less
+  RAM-resident image; GPU nodes are unchanged overall.
+
 ### Breaking changes in v1.3.0
 
-- RuntimeClass/handler `kata` → **`kata-clh`** (upstream kata-deploy naming).
+- RuntimeClass/handler `kata` → **`kata-clh`** (upstream kata-deploy naming;
+  removed entirely in v1.4.0 — see above).
 - RuntimeClass overheads now match upstream kata-deploy: `kata-qemu-snp`
   2Gi/1cpu, `kata-qemu-nvidia-gpu-snp` 10Gi/1cpu (SNP guest memory is fully
   host-pinned). Affects newly admitted pods only — check node headroom before
@@ -157,7 +175,7 @@ kernel, GPU CC mode, CDI service, guest sizing, validation ladder).
 ```
 extensions/coco/            # base extension (Dockerfile, manifest, CRI part)
 extensions/coco-nvidia/     # NVIDIA GPU add-on (+ CDI extension service)
-deploy/runtime-classes.yaml # all four RuntimeClasses — apply once per cluster
+deploy/runtime-classes.yaml # all three RuntimeClasses — apply once per cluster
 deploy/gpu-operator-values-talos.yaml
 patches/                    # machine-config patches per node role
 docs/                       # upstream proposals, design notes

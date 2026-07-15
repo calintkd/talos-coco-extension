@@ -16,10 +16,11 @@ QEMU 11.0.0** (`nvidia-smi` + vectorAdd). See the validation ladder below.
 The base extension (`coco-kata-containers`) is proven in production use.
 GPU support is isolated here so:
 
-- the base artifact stays **byte-identical** — `kata-clh` / `kata-qemu-coco-dev` /
+- the base artifact stays **byte-identical** — `kata-qemu-coco-dev` /
   `kata-qemu-snp` carry zero new risk from GPU work;
 - non-GPU nodes (control planes, CPU workers) don't carry the NVIDIA guest kernel +
-  Ubuntu-with-CUDA guest image payload;
+  Ubuntu-with-CUDA guest image payload, nor (since 1.5.0) the SNP-experimental
+  QEMU, which only this add-on's handler names;
 - node roles compose cleanly at installer build time: base everywhere, add-on only
   in the GPU node's installer.
 
@@ -27,13 +28,17 @@ This mirrors how Talos itself packages NVIDIA support (separate, version-paired
 `nvidia-*` extensions composed per node).
 
 **Dependency**: requires the base extension **from the same release** (same
-version, same Kata — guest assets must match the base's QEMU/shim) on the same
-node — it provides `qemu-system-x86_64-snp-experimental`, `virtiofsd`, and the
+version, same Kata — guest assets must match the base's shim) on the same
+node — it provides `virtiofsd`, the `AMDSEV.fd` OVMF firmware, and the
 statically linked `containerd-shim-kata-v2` that this add-on's runtime handler
-uses. Talos extensions cannot declare dependencies on each other, so the
-pairing is enforced by `make check-versions` at build time and by a boot-time
-check in the `nvidia-vfio-cdi` service (a missing/mismatched base fails the
-service loudly in `talosctl services` instead of failing pods obscurely).
+uses. (This add-on ships its own `qemu-system-x86_64-snp-experimental` and its
+datadir as of 1.5.0; before that the base carried them.) Talos extensions
+cannot declare dependencies on each other, so the pairing is enforced by
+`make check-versions` at build time, by `make verify-nvidia` cross-checking
+this extension's config against what it ships (with the base-provided paths
+declared explicitly), and by a boot-time check in the `nvidia-vfio-cdi`
+service (a missing/mismatched base fails the service loudly in
+`talosctl services` instead of failing pods obscurely).
 
 ## Contents
 

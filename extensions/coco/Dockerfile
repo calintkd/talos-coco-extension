@@ -24,18 +24,43 @@
 ARG KATA_VERSION=3.32.0
 ARG GO_VERSION=1.25
 
+# sha256 of kata-static-${KATA_VERSION}-amd64.tar.zst. MUST be updated with
+# KATA_VERSION — the build fails closed if it does not match.
+ARG KATA_SHA256=1449ecea50bd91fa73a94648db195d18950fe869ba4b1f12d05f55f1fa7c1b01
+
 # =============================================================================
 # Stage 1: Download, extract, and patch paths in config files
 # =============================================================================
 FROM alpine:3.21 AS kata-static
 
 ARG KATA_VERSION
+ARG KATA_SHA256
 
 RUN apk add --no-cache curl zstd tar sed
 
-# Download the official static release tarball
-RUN curl -fSL -o /tmp/kata-static.tar.zst \
+# Download and verify the official static release tarball.
+#
+# The checksum is not optional bookkeeping: this tarball IS the trusted
+# computing base. It supplies the SEV-SNP QEMU, the AMDSEV.fd measured
+# firmware, and the confidential guest kernel and image whose dm-verity root
+# hash the shipped Kata config asserts. A GitHub release asset can be replaced
+# in place by anyone with write access to the upstream repo, and the URL does
+# not change when it is; TLS authenticates the host we fetch from, not the
+# bytes it serves. Without this line the honest answer to "how do you know what
+# is in your TCB" is "we downloaded whatever was at that URL that day".
+#
+# This value is corroborated by siderolabs/extensions, which pins the same
+# sha256 for the same file in container-runtime/vars.yaml
+# (KATA_CONTAINERS_STATIC_AMD64_SHA256).
+# --retry/--continue-at: this is a 1.5 GB transfer and a mid-stream TCP reset is
+# routine on a long link. Without them a dropped connection fails the whole
+# build (curl 56), which is correct but needlessly brittle; resume + retry makes
+# it survivable. The checksum below is what makes retrying SAFE — a partial or
+# swapped body cannot pass it.
+RUN curl -fSL --retry 5 --retry-delay 5 --retry-all-errors -C - \
+  -o /tmp/kata-static.tar.zst \
   "https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-amd64.tar.zst" \
+  && echo "${KATA_SHA256}  /tmp/kata-static.tar.zst" | sha256sum -c - \
   && mkdir -p /kata-static \
   && tar --use-compress-program=unzstd -xf /tmp/kata-static.tar.zst -C /kata-static \
   && rm /tmp/kata-static.tar.zst
@@ -68,14 +93,16 @@ RUN sed -i \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
 
-# Point SNP config to the SNP-experimental QEMU binary (the standard QEMU
-# does not support SEV-SNP VM launch)
-RUN sed -i \
-  's|/usr/local/bin/qemu-system-x86_64"|/usr/local/bin/qemu-system-x86_64-snp-experimental"|g' \
-  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml && \
-  sed -i \
-  's|/usr/local/bin/qemu-system-x86_64"]|/usr/local/bin/qemu-system-x86_64-snp-experimental"]|g' \
-  /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
+# kata-qemu-snp deliberately stays on upstream's default hypervisor
+# (@QEMUPATH@ -> qemu-system-x86_64). Earlier revisions rewrote it to
+# qemu-system-x86_64-snp-experimental on the belief that the standard build
+# could not launch an SEV-SNP guest. That is false at Kata 3.32.0: both
+# binaries expose sev-snp-guest, and a standard-QEMU SNP guest was verified
+# on EPYC 9355 hardware (QEMU launched with confidential-guest-support=snp
+# and -object sev-snp-guest,cbitpos=51,policy=196608). The rewrite also
+# pinned production SNP to the older QEMU of the two (11.0.0 vs 11.0.1).
+# Only the GPU config uses the snp-experimental build, per upstream
+# (@QEMUSNPPATH@), and the add-on ships that binary itself.
 
 # Debug: show what we have (visible in build log)
 RUN echo "=== Binaries ===" && ls -1 /kata-static/opt/kata/bin/ \
@@ -149,15 +176,12 @@ COPY --from=kata-shim \
 
 # -- Hypervisors ---------------------------------------------------------------
 
-# qemu-system-x86_64 (for kata-qemu-coco-dev)
+# qemu-system-x86_64 — backs BOTH kata-qemu-snp and kata-qemu-coco-dev.
+# The snp-experimental build is not shipped here: only the GPU add-on's
+# config names it, and the add-on ships it.
 COPY --from=kata-static \
   /kata-static/opt/kata/bin/qemu-system-x86_64 \
   /rootfs/usr/local/bin/qemu-system-x86_64
-
-# qemu-system-x86_64-snp-experimental (for kata-qemu-snp — standard QEMU doesn't support SEV-SNP)
-COPY --from=kata-static \
-  /kata-static/opt/kata/bin/qemu-system-x86_64-snp-experimental \
-  /rootfs/usr/local/bin/qemu-system-x86_64-snp-experimental
 
 # virtiofsd
 COPY --from=kata-static \
@@ -182,21 +206,24 @@ COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-containers/kata-containers-confidential.img \
   /rootfs/usr/local/share/kata-containers/kata-containers-confidential.img
 
-# -- QEMU firmware blobs (required by qemu-system-x86_64 at runtime) ----------
+# -- QEMU datadir (ROMs, firmware blobs) --------------------------------------
+# qemu-system-x86_64 resolves this by a COMPILED-IN path (/opt/kata/share/
+# kata-qemu/qemu), not via any config key — hence the /opt/kata symlink below,
+# and hence the verify stage cannot check this tree by config reference.
+# The kata-qemu-snp-experimental tree is not shipped here; it belongs with the
+# binary that reads it, in the GPU add-on.
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-qemu/ \
   /rootfs/usr/local/share/kata-qemu/
 
-# -- SNP-experimental QEMU firmware blobs (kvmvapic.bin, efi-virtio.rom, etc.) -
+# -- OVMF firmware ------------------------------------------------------------
+# ONLY AMDSEV.fd: it is the sole firmware any shipped config names
+# (configuration-qemu-snp.toml's firmware key; coco-dev leaves firmware = "").
+# The upstream ovmf/ dir also carries OVMF.fd and OVMF.inteltdx.fd — the latter
+# is Intel TDX firmware, which this AMD SEV-SNP extension can never load.
 COPY --from=kata-static \
-  /kata-static/opt/kata/share/kata-qemu-snp-experimental/ \
-  /rootfs/usr/local/share/kata-qemu-snp-experimental/
-
-# -- OVMF firmware (required by kata-qemu-snp for SEV-SNP) --------------------
-# Contains AMDSEV.fd (AMD SEV-SNP) and OVMF.fd (standard UEFI)
-COPY --from=kata-static \
-  /kata-static/opt/kata/share/ovmf/ \
-  /rootfs/usr/local/share/ovmf/
+  /kata-static/opt/kata/share/ovmf/AMDSEV.fd \
+  /rootfs/usr/local/share/ovmf/AMDSEV.fd
 
 
 # -- Official configuration files (path-patched in Stage 1) --------------------
@@ -226,37 +253,71 @@ COPY --from=kata-static /tmp/opt-symlink/opt /rootfs/opt
 # Stage 4: Verify the assembled rootfs
 # =============================================================================
 # Cross-checks the shipped configs against the shipped payload in both
-# directions. Guest assets are the largest thing in this image, and the
-# config files that name them come from the upstream tarball — so a Kata
-# bump can silently repoint a config at a file we do not ship (breaks boot),
-# or strand a file no config names (dead weight; kata-containers-initrd-
-# confidential.img shipped unreferenced from v1.0.0 until 1.4.0 at 77 MB).
-# Neither is visible without running a guest, so assert it at build time.
+# directions. The configs come from the upstream tarball, so a Kata bump can
+# silently repoint one at a file we do not ship (build stays green, guest will
+# not boot), or strand a file no config names (dead RAM on every node —
+# kata-containers-initrd-confidential.img shipped unreferenced for five
+# releases at 77 MB, and the ovmf/ dir shipped Intel TDX firmware). Neither is
+# visible without booting a guest, so it is asserted here.
 #
-# Not in the default build graph — run via `make verify-base`.
+# Three checks:
+#   1. every path a config names resolves under /usr/local — a sed that
+#      silently stops matching leaves an /opt/kata path, which would otherwise
+#      only surface as a boot failure (the /opt/kata symlink would even mask it)
+#   2. every named path exists
+#   3. every payload file is either named by a config or explicitly allowlisted
+#      below. The allowlist is NOT a rubber stamp: each entry is something
+#      resolved by a mechanism other than a config key, and each needs a
+#      stated reason.
+#
+# Run via `make verify-base`; CI runs it on every build.
 FROM alpine:3.21 AS verify
 
 COPY --from=extension /rootfs /rootfs
 
 RUN set -eu; \
   cfgdir=/rootfs/usr/local/share/kata-containers; \
-  refs=$(grep -hE '^[[:space:]]*(kernel|image|initrd|path|firmware)[[:space:]]*=' \
-           "$cfgdir"/configuration-*.toml \
-         | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' \
-         | grep '^/usr/local/' | sort -u); \
   rc=0; \
-  echo "--- paths named by a config must exist:"; \
+  refs=$(grep -hE '^[[:space:]]*(kernel|image|initrd|path|firmware|virtio_fs_daemon)[[:space:]]*=' \
+           "$cfgdir"/configuration-*.toml \
+         | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' | grep -v '^$' | sort -u); \
+  echo "--- 1. every config-named path must be under /usr/local (sed drift):"; \
   for p in $refs; do \
-    if [ -e "/rootfs$p" ]; then echo "  ok    $p"; \
+    case "$p" in \
+      /usr/local/*) echo "  ok      $p" ;; \
+      *) echo "  BAD PREFIX $p (path rewrite did not apply)"; rc=1 ;; \
+    esac; \
+  done; \
+  echo "--- 2. every config-named path must exist:"; \
+  for p in $refs; do \
+    if [ -e "/rootfs$p" ]; then echo "  ok      $p"; \
     else echo "  MISSING $p"; rc=1; fi; \
   done; \
-  echo "--- guest assets must be named by a config:"; \
-  for f in "$cfgdir"/*.img "$cfgdir"/*.container; do \
-    [ -e "$f" ] || continue; \
+  echo "--- 3. every payload file must be named by a config, or allowlisted:"; \
+  for f in $(find /rootfs/usr/local -type f -o -type l | sort); do \
     p="${f#/rootfs}"; \
-    if echo "$refs" | grep -qxF "$p"; then echo "  ok    $p"; \
-    else echo "  DEAD  $p (shipped, referenced by nothing)"; rc=1; fi; \
+    case "$p" in \
+      */share/kata-qemu/*|*/share/kata-qemu-snp-experimental/*) \
+        continue ;; \
+      */share/kata-containers/configuration-*.toml) \
+        continue ;; \
+      */bin/containerd-shim-kata-v2) \
+        continue ;; \
+    esac; \
+    if echo "$refs" | grep -qxF "$p"; then echo "  ok      $p"; \
+    else echo "  DEAD    $p (shipped, named by nothing)"; rc=1; fi; \
   done; \
   if [ "$rc" -eq 0 ]; then echo "OK: rootfs self-consistent"; \
   else echo "FAIL: rootfs inconsistent"; fi; \
   exit "$rc"
+
+# Allowlist reasons (check 3):
+#   share/kata-qemu/**            QEMU's datadir, resolved by a compiled-in
+#                                 path, never named by a config key
+#   share/kata-qemu-snp-experimental/**
+#                                 same, for the add-on's binary (not shipped
+#                                 by this extension; the pattern is kept so the
+#                                 same check can be reused verbatim)
+#   configuration-*.toml          the configs themselves
+#   bin/containerd-shim-kata-v2   containerd resolves it from runtime_type
+#                                 io.containerd.kata.v2, not from a path

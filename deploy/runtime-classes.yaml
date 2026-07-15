@@ -20,9 +20,17 @@
 # Overhead semantics (matters for capacity planning):
 #   - `overhead.podFixed` is added to the pod's resource accounting at
 #     ADMISSION time. Changing a RuntimeClass affects only NEW pods.
-#   - Values follow upstream kata-deploy: guest default_memory (2048 MiB for
-#     kata-qemu-snp, 8192 MiB for the GPU class — SNP guest memory is fully
-#     host-pinned, no ballooning) plus VMM margin.
+#   - Values are upstream kata-deploy's, verbatim. They are NOT
+#     "default_memory + VMM margin" — only the GPU class works out that way
+#     (10Gi vs a 8192 MiB guest). kata-qemu-snp is 2Gi against a 2048 MiB
+#     guest, i.e. zero margin for QEMU/virtiofsd themselves.
+#   - kata-qemu-coco-dev is under-accounted by ~1.9 GiB per pod and this is
+#     inherited from upstream, not a local choice: its config sets
+#     default_memory = 2048 AND static_sandbox_resource_mgmt = true, so the VM
+#     is pinned at 2048 MiB regardless of container limits, while Kubernetes
+#     accounts only the 160Mi below. Twenty such pods hide ~38 GiB from the
+#     scheduler. If you run coco-dev at any density, raise this to 2Gi+ and
+#     accept the divergence from upstream.
 #   - Pods that raise guest RAM via the
 #     io.katacontainers.config.hypervisor.default_memory annotation exceed
 #     this fixed overhead — set the container memory request/limit to match

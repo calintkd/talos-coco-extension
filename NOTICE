@@ -1,0 +1,64 @@
+talos-coco-extension
+Copyright 2026 the talos-coco-extension authors
+
+This product includes software developed as part of this repository, licensed
+under the Apache License, Version 2.0 (see LICENSE).
+
+================================================================================
+Third-party components redistributed in the published extension images
+================================================================================
+
+The container images built from this repository (ghcr.io/<org>/talos-coco-extension
+and ghcr.io/<org>/talos-coco-nvidia) are Talos Linux system extensions. They do
+not contain only this repository's source: they redistribute prebuilt binaries
+and images taken from the upstream Kata Containers release tarball
+(kata-static-<version>-amd64.tar.zst), published at:
+
+    https://github.com/kata-containers/kata-containers/releases
+
+Those components carry their own licenses, which are NOT Apache-2.0. The
+Apache-2.0 license in LICENSE applies to this repository's own source only.
+
+Components redistributed, and their licenses:
+
+  QEMU (qemu-system-x86_64, qemu-system-x86_64-snp-experimental, and the
+  associated firmware/ROM datadirs under share/kata-qemu/ and
+  share/kata-qemu-snp-experimental/)
+      GNU General Public License, version 2
+      https://github.com/qemu/qemu  /  https://github.com/confidential-containers/qemu
+      The SNP-experimental build originates from the Confidential Containers
+      project's QEMU fork.
+
+  Kata Containers (containerd-shim-kata-v2, guest kernel, guest images)
+      Apache License 2.0
+      https://github.com/kata-containers/kata-containers
+      The shim is rebuilt from upstream source by this repository; the guest
+      kernel (Linux, GPLv2) and guest images (Ubuntu-based rootfs, containing
+      many separately licensed components) are redistributed as built upstream.
+
+  virtiofsd
+      Apache License 2.0 / BSD-3-Clause
+      https://gitlab.com/virtio-fs/virtiofsd
+
+  EDK2 / OVMF (share/ovmf/AMDSEV.fd)
+      BSD-2-Clause-Patent
+      https://github.com/tianocore/edk2
+
+  BusyBox (extension-service runtime in the NVIDIA add-on)
+      GNU General Public License, version 2
+      https://busybox.net
+
+  NVIDIA GPU driver and NVRC (inside the NVIDIA confidential guest image)
+      NVIDIA proprietary license terms; the open GPU kernel modules are
+      dual-licensed MIT/GPLv2.
+      https://www.nvidia.com/en-us/drivers/  /  https://github.com/NVIDIA/open-gpu-kernel-modules
+
+================================================================================
+Source availability
+================================================================================
+
+The GPLv2 components above are redistributed unmodified from their upstream
+release artifacts. Corresponding source is available from the upstream projects
+at the URLs listed, at the exact versions pinned in this repository
+(KATA_VERSION in the Makefile and both Dockerfiles, which fixes the release
+tarball, and hence every binary taken from it).

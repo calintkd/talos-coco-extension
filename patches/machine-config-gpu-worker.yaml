@@ -4,7 +4,13 @@
 # Apply on GPU worker nodes ONLY (CP / CPU-worker nodes use
 # machine-config-snp.yaml; this file is a superset — do not apply both):
 #   talosctl gen config ... --config-patch @patches/machine-config-gpu-worker.yaml
-#   (or talosctl patch mc on a live node — module changes need a reboot)
+#
+# ⚠ Do NOT re-apply this with `talosctl patch mc`: Talos MERGES list-valued
+#   fields by APPEND, so machine.kernel.modules gains a duplicate set on every
+#   apply (observed three times over on a dev node). Duplicates are harmless
+#   here — the modules are idempotent — but they make the live config diverge
+#   from this file, so what you validated is no longer what git says. Use
+#   `talosctl edit mc`, or regenerate the config from this patch, and reboot.
 #
 # The GPU never gets a host driver: the device is bound to vfio-pci at boot
 # via the vfio_pci module parameter below. The NVIDIA driver + NVRC run inside

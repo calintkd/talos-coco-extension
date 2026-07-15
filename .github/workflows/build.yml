@@ -1,9 +1,17 @@
-# Builds both extension images. Publishing happens ONLY on version tags:
-# the tag must equal v<base manifest version>, check-versions enforces the
-# base/nvidia lockstep + Kata pairing, and a pre-push check refuses to
-# overwrite a tag that already exists on ghcr (published artifacts are
-# immutable — bump the version instead). workflow_dispatch builds without
-# pushing (CI smoke).
+# Builds both extension images.
+#
+# Runs on every push and PR so the gates actually execute: `make base` /
+# `make nvidia` depend on check-versions and on the per-extension verify
+# stage, which cross-checks each assembled rootfs against its own configs.
+# Those gates are the only thing standing between a Kata bump and an image
+# whose configs name files it does not ship — a failure invisible until a
+# guest boots.
+#
+# Publishing happens ONLY on version tags: the tag must equal v<base manifest
+# version>, check-versions enforces the base/nvidia lockstep + Kata pairing,
+# and a pre-push check refuses to overwrite a tag that already exists on ghcr
+# (published artifacts are immutable — bump the version instead; ghcr itself
+# offers no tag immutability, so that check is the only guard).
 #
 # Disk note: the nvidia image is ~1.7 GB uncompressed and its build stage
 # extracts the ~1.5 GB kata-static tarball — the free-disk-space step keeps
@@ -12,7 +20,10 @@ name: build
 
 on:
   push:
+    branches: ["main"]
     tags: ["v*"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch: {}
 
 permissions:
@@ -53,15 +64,26 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Fails CLOSED. `docker manifest inspect` exits non-zero for "tag does
+      # not exist" AND for a network error, a 429, or expired auth — so
+      # treating every non-zero exit as "unpublished" would let a transient
+      # blip authorise an overwrite of a released, hardware-validated image.
+      # Only a recognised not-found response is accepted as proof of absence.
       - name: Refuse to overwrite a published tag
         if: github.ref_type == 'tag'
         run: |
           key=$(echo "${{ matrix.target }}" | tr a-z A-Z)_VERSION
           img=$(make -s print-versions | awk -v k="$key" '$1==k{print $NF}')
-          if docker manifest inspect "$img" >/dev/null 2>&1; then
+          if out=$(docker manifest inspect "$img" 2>&1); then
             echo "FAIL: $img already exists on the registry — bump the version instead of overwriting"
             exit 1
           fi
-          echo "OK: $img is unpublished"
+          if echo "$out" | grep -qiE 'manifest unknown|MANIFEST_UNKNOWN|NAME_UNKNOWN|not found|no such manifest'; then
+            echo "OK: $img is unpublished"
+          else
+            echo "FAIL: cannot determine whether $img exists — refusing to push."
+            echo "  registry said: $out"
+            exit 1
+          fi
       - name: Build ${{ matrix.target }} (push only on tags)
         run: make ${{ matrix.target }} PUSH=${{ github.ref_type == 'tag' }}

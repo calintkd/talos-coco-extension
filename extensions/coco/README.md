@@ -60,15 +60,17 @@ docker buildx build --platform linux/amd64 \
 | Path                                                 | Description                                 |
 | ---------------------------------------------------- | ------------------------------------------- |
 | `/usr/local/bin/containerd-shim-kata-v2`             | Kata shim (static, built from source)       |
-| `/usr/local/bin/qemu-system-x86_64`                  | Standard QEMU (for `kata-qemu-coco-dev`)    |
-| `/usr/local/bin/qemu-system-x86_64-snp-experimental` | SNP QEMU (for `kata-qemu-snp`)              |
+| `/usr/local/bin/qemu-system-x86_64`                  | QEMU — backs BOTH handlers                  |
 | `/usr/local/libexec/virtiofsd`                       | virtiofsd daemon                            |
 | `/usr/local/share/kata-containers/`                  | Confidential guest kernel + image, configs  |
 | `/usr/local/share/ovmf/AMDSEV.fd`                    | OVMF firmware for SEV-SNP                   |
-| `/usr/local/share/kata-qemu/`                        | Standard QEMU firmware/ROM files            |
-| `/usr/local/share/kata-qemu-snp-experimental/`       | SNP QEMU firmware/ROM files                 |
+| `/usr/local/share/kata-qemu/`                        | QEMU datadir (ROMs, firmware blobs)         |
 | `/opt/kata`                                          | Symlink → `/usr/local`                      |
 | `/etc/cri/conf.d/20-coco.part`                       | Containerd runtime handler config           |
+
+The build asserts this list against the shipped configs in both directions
+(`make verify-base`), so a Kata bump cannot silently strand a payload file or
+point a config at something absent.
 
 Configuration TOML files are extracted from the official Kata release tarball
 during the build, with paths rewritten from `/opt/kata/` to `/usr/local/`,
@@ -83,11 +85,25 @@ BUILDFLAGS="-buildmode=exe"` because Talos has no glibc. The pre-built shim in
 the kata-static tarball is dynamically linked and won't start. The build hard-
 gates on `ldd` reporting a static binary.
 
-### SNP-experimental QEMU
+### Standard QEMU for SNP
 
-`kata-qemu-snp` uses `qemu-system-x86_64-snp-experimental` — the standard QEMU
-in the tarball does not support SEV-SNP VM launch. The config is patched at
-build time to reference it.
+`kata-qemu-snp` runs on the standard `qemu-system-x86_64`, which is upstream
+Kata's own default for that config (`@QEMUPATH@`).
+
+Releases up to 1.4.0 rewrote it to `qemu-system-x86_64-snp-experimental`, on
+the belief that the standard build could not launch an SEV-SNP guest. That is
+false at Kata 3.32.0: both binaries expose `sev-snp-guest` with identical
+properties, and a standard-QEMU SNP guest was verified on EPYC 9355 — QEMU
+launched with `-machine confidential-guest-support=snp` and `-object
+sev-snp-guest,cbitpos=51,policy=196608`, which QEMU refuses to start if it
+cannot honour. The rewrite also pinned production SNP to the *older* of the
+two binaries (11.0.0 vs 11.0.1).
+
+The snp-experimental build is still needed for the GPU handler — upstream
+builds that config against `@QEMUSNPPATH@` — so it ships with the add-on,
+which is the only thing that names it. Keeping it here cost every
+control-plane and CPU-worker node ~38 MB of RAM-resident QEMU it could never
+execute.
 
 ### /opt/kata symlink
 
