@@ -16,7 +16,6 @@
 # | kata-qemu-snp            | kata-runtime + snp                            |
 # | kata-qemu-nvidia-gpu-snp | kata-runtime + snp + gpu vm-passthrough       |
 # | kata-qemu-coco-dev       | kata-runtime                                  |
-# | kata-clh                 | kata-runtime                                  |
 #
 # Overhead semantics (matters for capacity planning):
 #   - `overhead.podFixed` is added to the pod's resource accounting at
@@ -32,11 +31,12 @@
 #     the accounted usage of every REPLACED pod by ~1.9 GiB + 0.75 CPU vs
 #     the pre-v1.3.0 values — check node headroom first.
 #
-# BREAKING (v1.3.0): the `kata` class/handler is now `kata-clh` (upstream
-# kata-deploy naming). If you carry pods on the old name: delete the old
-# `kata` RuntimeClass, apply this file, and update pod specs to `kata-clh`
-# before upgrading nodes to the v1.3.0 extension (which drops the old
-# handler name).
+# BREAKING (v1.4.0): the `kata-clh` class/handler is gone. Non-confidential
+# cloud-hypervisor Kata is what the official siderolabs/kata-containers
+# extension provides — install that alongside if you need it. Delete a
+# leftover `kata-clh` RuntimeClass before upgrading nodes to v1.4.0; pods
+# holding it would otherwise stay Pending against a handler no node
+# registers. (v1.3.0 had renamed this class from `kata`.)
 #
 # Do NOT ship this file via Talos cluster.inlineManifests: Talos bootstrap
 # manifests are create-only (machined never updates or deletes the objects
@@ -88,20 +88,6 @@ handler: kata-qemu-coco-dev
 overhead:
   podFixed:
     memory: "160Mi"
-    cpu: "250m"
-scheduling:
-  nodeSelector:
-    katacontainers.io/kata-runtime: "true"
-
----
-apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: kata-clh
-handler: kata-clh
-overhead:
-  podFixed:
-    memory: "130Mi"
     cpu: "250m"
 scheduling:
   nodeSelector:

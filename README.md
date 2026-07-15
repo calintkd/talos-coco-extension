@@ -16,9 +16,9 @@ CUDA vectorAdd, and vLLM inference (validated 2026-07-09, Kata 3.32.0).
 
 | Artifact | Extension name | Provides | Compressed size |
 | --- | --- | --- | --- |
-| `extensions/coco/` → `ghcr.io/<org>/talos-coco-extension` | `coco-kata-containers` | Kata shim (static rebuild), SNP-experimental QEMU, Cloud Hypervisor, virtiofsd, guest kernels + confidential images, OVMF, handlers `kata-qemu-snp` / `kata-qemu-coco-dev` / `kata-clh` | ~320 MB |
+| `extensions/coco/` → `ghcr.io/<org>/talos-coco-extension` | `coco-kata-containers` | Kata shim (static rebuild), SNP-experimental QEMU, standard QEMU, virtiofsd, confidential guest kernel + image, OVMF, handlers `kata-qemu-snp` / `kata-qemu-coco-dev` | ~198 MB |
 | `extensions/coco-nvidia/` → `ghcr.io/<org>/talos-coco-nvidia` | `coco-kata-nvidia-gpu` | Handler `kata-qemu-nvidia-gpu-snp`: NVIDIA guest kernel + confidential guest image (driver + NVRC), GPU+SNP Kata config, boot-time VFIO CDI spec generator service | ~450 MB |
-| `deploy/` | — | `runtime-classes.yaml` (all four RuntimeClasses, apply once), NVIDIA GPU Operator values for Talos | — |
+| `deploy/` | — | `runtime-classes.yaml` (all three RuntimeClasses, apply once), NVIDIA GPU Operator values for Talos | — |
 | `patches/` | — | Machine-config patches per node role | — |
 
 Why two extensions instead of one: GPU-less nodes (control planes, CPU workers)
@@ -51,10 +51,11 @@ RuntimeClass parity with the chart's defaults (x86_64/AMD): `kata-qemu-snp`,
 `kata-qemu-coco-dev`, and `kata-qemu-nvidia-gpu-snp` match upstream names and
 overhead values, so pod specs move between a chart-managed cluster and a Talos
 cluster unchanged. Intel TDX and s390x variants are out of scope (AMD SEV-SNP
-only). `kata-clh` is the upstream name for the Cloud Hypervisor class (the
-chart ships it disabled by default; here it is included). Scheduling labels
-differ from the chart's NFD/cc-manager-derived labels — here they are set
-deterministically via `machine.nodeLabels` (see `patches/`).
+only). Non-confidential Cloud Hypervisor Kata is also out of scope: the
+official `siderolabs/kata-containers` extension already provides it, and
+Kata's CLH driver refuses SEV-SNP outright, so it buys nothing here.
+Scheduling labels differ from the chart's NFD/cc-manager-derived labels —
+here they are set deterministically via `machine.nodeLabels` (see `patches/`).
 
 ## Node roles
 

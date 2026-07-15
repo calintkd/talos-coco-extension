@@ -49,7 +49,7 @@ NVIDIA_IMG := $(REGISTRY)/$(USERNAME)/talos-coco-nvidia:v$(NVIDIA_VERSION)
 BUILDX_FLAGS := --provenance=false --sbom=false
 BUILDX_OUT := $(if $(filter true,$(PUSH)),--push,--load)
 
-.PHONY: all images base nvidia installer-cpu installer-gpu iso \
+.PHONY: all images base nvidia verify-base installer-cpu installer-gpu iso \
         check-versions print-versions
 
 all: images
@@ -65,8 +65,16 @@ print-versions:
 base:
 	docker buildx build --platform $(PLATFORM) $(BUILDX_FLAGS) \
 	  --build-arg KATA_VERSION=$(KATA_VERSION) \
-	  -f extensions/coco/Dockerfile \
+	  -f extensions/coco/Dockerfile --target extension \
 	  -t $(BASE_IMG) $(BUILDX_OUT) extensions/coco/
+
+# Cross-check the assembled base rootfs against its configs (see the `verify`
+# stage). Layer-cached, so this is near-free right after `make base`.
+verify-base:
+	docker buildx build --platform $(PLATFORM) \
+	  --build-arg KATA_VERSION=$(KATA_VERSION) \
+	  -f extensions/coco/Dockerfile --target verify \
+	  --output type=cacheonly --progress plain extensions/coco/
 
 nvidia:
 	docker buildx build --platform $(PLATFORM) $(BUILDX_FLAGS) \

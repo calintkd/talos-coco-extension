@@ -1,7 +1,7 @@
 version: v1alpha1
 metadata:
   name: coco-kata-nvidia-gpu
-  version: 1.3.0
+  version: 1.4.0
   author: CoCo Extension (custom)
   description: |
     NVIDIA GPU add-on (Kata Containers 3.32.0) for the Talos CoCo extension
@@ -14,9 +14,10 @@ metadata:
     IOMMUFD-cdev CDI spec for vfio-bound GPUs in /run/cdi at every boot,
     and fails loudly at boot if the base extension is missing).
     Requires the base coco-kata-containers extension from the SAME
-    release (>= 1.3.0, same Kata version — guest assets must match the
+    release (>= 1.4.0, same Kata version — guest assets must match the
     base's QEMU/shim) on the same node (provides the SNP-experimental
-    QEMU, virtiofsd, and the statically linked Kata shim) AND a Talos
+    QEMU, OVMF firmware, virtiofsd, and the statically linked Kata
+    shim) AND a Talos
     kernel with CONFIG_IOMMUFD=y +
     CONFIG_VFIO_DEVICE_CDEV=y (custom kernel — confidential guests require
     the VFIO IOMMUFD cdev interface; no stock Talos kernel enables it).

@@ -10,7 +10,16 @@ computing. Product-level overview, quick start, and RuntimeClasses live in the
 | -------------------- | ------------------------- | ----------------------- | -------------- |
 | `kata-qemu-snp`      | AMD SEV-SNP production    | QEMU (SNP-experimental) | ✅             |
 | `kata-qemu-coco-dev` | CoCo dev/test (no TEE HW) | QEMU                    | ✅ (simulated) |
-| `kata-clh`           | Standard VM isolation     | Cloud Hypervisor        | ❌ (named `kata` before v1.3.0) |
+
+Every handler here is confidential. Non-confidential Cloud Hypervisor Kata is
+deliberately out of scope — the official `siderolabs/kata-containers` extension
+provides exactly that, and can be installed alongside this one. (This extension
+carried a `kata-clh` handler, named `kata` before v1.3.0, until v1.4.0.)
+
+SEV-SNP in Kata is QEMU-only by construction: the Cloud Hypervisor driver
+returns `SEV-SNP protection is not supported by Cloud Hypervisor`
+(`virtcontainers/clh.go`), and every TEE-capable shim upstream is a `qemu-*`
+one. That is why this extension ships QEMU rather than reusing CLH.
 
 ### Architecture
 
@@ -18,13 +27,13 @@ computing. Product-level overview, quick start, and RuntimeClasses live in the
 ┌─────────────────────────────────────────────────────────────────┐
 │  Talos Linux Host (immutable)                                   │
 │                                                                 │
-│  containerd ──► containerd-shim-kata-v2 ──► QEMU / CLH          │
+│  containerd ──► containerd-shim-kata-v2 ──► QEMU                │
 │       │                    │                    │               │
 │  CRI config          Kata config         Guest VM               │
 │  (20-coco.part)   (configuration-*.toml)  ┌────────────┐        │
 │                                           │ Guest      │        │
 │                                           │ Kernel     │        │
-│                                           │ + initrd   │        │
+│                                           │ + image    │        │
 │  /opt/kata → /usr/local (symlink)         │ + OVMF     │        │
 │                                           │ (SEV-SNP)  │        │
 │                                           └────────────┘        │
@@ -51,11 +60,10 @@ docker buildx build --platform linux/amd64 \
 | Path                                                 | Description                                 |
 | ---------------------------------------------------- | ------------------------------------------- |
 | `/usr/local/bin/containerd-shim-kata-v2`             | Kata shim (static, built from source)       |
-| `/usr/local/bin/cloud-hypervisor`                    | Cloud Hypervisor (for `kata-clh`)           |
 | `/usr/local/bin/qemu-system-x86_64`                  | Standard QEMU (for `kata-qemu-coco-dev`)    |
 | `/usr/local/bin/qemu-system-x86_64-snp-experimental` | SNP QEMU (for `kata-qemu-snp`)              |
 | `/usr/local/libexec/virtiofsd`                       | virtiofsd daemon                            |
-| `/usr/local/share/kata-containers/`                  | Guest kernels, images, initrd, config files |
+| `/usr/local/share/kata-containers/`                  | Confidential guest kernel + image, configs  |
 | `/usr/local/share/ovmf/AMDSEV.fd`                    | OVMF firmware for SEV-SNP                   |
 | `/usr/local/share/kata-qemu/`                        | Standard QEMU firmware/ROM files            |
 | `/usr/local/share/kata-qemu-snp-experimental/`       | SNP QEMU firmware/ROM files                 |

@@ -149,11 +149,6 @@ COPY --from=kata-shim \
 
 # -- Hypervisors ---------------------------------------------------------------
 
-# Cloud Hypervisor (for the "kata-clh" runtime handler)
-COPY --from=kata-static \
-  /kata-static/opt/kata/bin/cloud-hypervisor \
-  /rootfs/usr/local/bin/cloud-hypervisor
-
 # qemu-system-x86_64 (for kata-qemu-coco-dev)
 COPY --from=kata-static \
   /kata-static/opt/kata/bin/qemu-system-x86_64 \
@@ -169,34 +164,23 @@ COPY --from=kata-static \
   /kata-static/opt/kata/libexec/virtiofsd \
   /rootfs/usr/local/libexec/virtiofsd
 
-# -- Guest kernels ------------------------------------------------------------
+# -- Guest kernel -------------------------------------------------------------
 
-# vmlinux (uncompressed, for cloud-hypervisor)
-COPY --from=kata-static \
-  /kata-static/opt/kata/share/kata-containers/vmlinux.container \
-  /rootfs/usr/local/share/kata-containers/vmlinux.container
-
-# vmlinuz (compressed, for QEMU — used by both SNP and coco-dev)
+# vmlinuz (compressed) — kata resolves KERNELCONFIDENTIALPATH to this for both
+# kata-qemu-snp and kata-qemu-coco-dev. The uncompressed vmlinux.container is
+# cloud-hypervisor's kernel only and is not shipped.
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-containers/vmlinuz.container \
   /rootfs/usr/local/share/kata-containers/vmlinuz.container
 
-# -- Guest images / initrd ----------------------------------------------------
+# -- Guest image --------------------------------------------------------------
 
-# Standard guest image (for the cloud-hypervisor "kata-clh" handler)
-COPY --from=kata-static \
-  /kata-static/opt/kata/share/kata-containers/kata-containers.img \
-  /rootfs/usr/local/share/kata-containers/kata-containers.img
-
-# Confidential guest image (for kata-qemu-coco-dev — dm-verity protected)
+# Confidential guest image — used by BOTH kata-qemu-snp and kata-qemu-coco-dev
+# (both configs set image = this; neither sets initrd, so the upstream
+# kata-containers-initrd-confidential.img is not shipped).
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-containers/kata-containers-confidential.img \
   /rootfs/usr/local/share/kata-containers/kata-containers-confidential.img
-
-# Confidential initrd (for kata-qemu-snp — contains attestation agent)
-COPY --from=kata-static \
-  /kata-static/opt/kata/share/kata-containers/kata-containers-initrd-confidential.img \
-  /rootfs/usr/local/share/kata-containers/kata-containers-initrd-confidential.img
 
 # -- QEMU firmware blobs (required by qemu-system-x86_64 at runtime) ----------
 COPY --from=kata-static \
@@ -227,13 +211,6 @@ COPY --from=kata-static \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-coco-dev.toml \
   /rootfs/usr/local/share/kata-containers/configuration-qemu-coco-dev.toml
 
-# kata-clh (cloud-hypervisor): Standard non-confidential fallback
-# (keeps the upstream tarball's file name — the handler was renamed from
-# `kata` to `kata-clh` in v1.3.0 to match upstream kata-deploy naming)
-COPY --from=kata-static \
-  /kata-static/opt/kata/share/defaults/kata-containers/configuration-clh.toml \
-  /rootfs/usr/local/share/kata-containers/configuration-clh.toml
-
 # -- Containerd CRI drop-in configuration -------------------------------------
 COPY rootfs/etc/cri/conf.d/20-coco.part \
   /rootfs/etc/cri/conf.d/20-coco.part
@@ -244,3 +221,42 @@ COPY rootfs/etc/cri/conf.d/20-coco.part \
 # symlink makes all compiled-in paths work transparently.
 # Note: Created in kata-static stage via a preparatory step, then copied here.
 COPY --from=kata-static /tmp/opt-symlink/opt /rootfs/opt
+
+# =============================================================================
+# Stage 4: Verify the assembled rootfs
+# =============================================================================
+# Cross-checks the shipped configs against the shipped payload in both
+# directions. Guest assets are the largest thing in this image, and the
+# config files that name them come from the upstream tarball — so a Kata
+# bump can silently repoint a config at a file we do not ship (breaks boot),
+# or strand a file no config names (dead weight; kata-containers-initrd-
+# confidential.img shipped unreferenced from v1.0.0 until 1.4.0 at 77 MB).
+# Neither is visible without running a guest, so assert it at build time.
+#
+# Not in the default build graph — run via `make verify-base`.
+FROM alpine:3.21 AS verify
+
+COPY --from=extension /rootfs /rootfs
+
+RUN set -eu; \
+  cfgdir=/rootfs/usr/local/share/kata-containers; \
+  refs=$(grep -hE '^[[:space:]]*(kernel|image|initrd|path|firmware)[[:space:]]*=' \
+           "$cfgdir"/configuration-*.toml \
+         | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' \
+         | grep '^/usr/local/' | sort -u); \
+  rc=0; \
+  echo "--- paths named by a config must exist:"; \
+  for p in $refs; do \
+    if [ -e "/rootfs$p" ]; then echo "  ok    $p"; \
+    else echo "  MISSING $p"; rc=1; fi; \
+  done; \
+  echo "--- guest assets must be named by a config:"; \
+  for f in "$cfgdir"/*.img "$cfgdir"/*.container; do \
+    [ -e "$f" ] || continue; \
+    p="${f#/rootfs}"; \
+    if echo "$refs" | grep -qxF "$p"; then echo "  ok    $p"; \
+    else echo "  DEAD  $p (shipped, referenced by nothing)"; rc=1; fi; \
+  done; \
+  if [ "$rc" -eq 0 ]; then echo "OK: rootfs self-consistent"; \
+  else echo "FAIL: rootfs inconsistent"; fi; \
+  exit "$rc"
