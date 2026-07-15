@@ -86,6 +86,27 @@ scheduling:
     katacontainers.io/kata-runtime: "true"
     coco.confidentialcontainers.org/snp: "true"
     nvidia.com/gpu.workload.config: "vm-passthrough"
+    # CC-mode interlock. GPU Confidential Computing mode is persistent per-GPU
+    # state, set out-of-band with NVIDIA's gpu-admin-tools — nothing in the
+    # cluster sets or observes it (upstream's ccManager would, but it is a
+    # privileged pod doing in-band PCIe programming and is disabled here; see
+    # deploy/gpu-operator-values-talos.yaml).
+    #
+    # Without this line a GPU whose CC mode is OFF still carries
+    # vm-passthrough, so confidential pods schedule onto it and then hang
+    # forever: the in-guest driver handshake never completes, the kata agent
+    # never dials, and kubelet gives up minutes later with nothing pointing at
+    # the cause. That is the platform's core confidentiality property guarded
+    # by an unenforced manual step — and it silently reverts on GPU swap, RMA,
+    # or board reset.
+    #
+    # This does NOT measure CC mode; it is still an assertion. What it buys is
+    # that the assertion is COUPLED to the procedure and fails CLOSED: no
+    # label, no scheduling, pod sits Pending with an obvious reason.
+    # Set it as the LAST step of the CC-mode procedure, per-node:
+    #   kubectl label node <node> nvidia.com/cc.ready.state=true
+    # and remove it before turning CC mode off or replacing the GPU.
+    nvidia.com/cc.ready.state: "true"
 
 ---
 apiVersion: node.k8s.io/v1
