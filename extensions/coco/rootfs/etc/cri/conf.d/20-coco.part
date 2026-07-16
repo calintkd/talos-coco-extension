@@ -11,8 +11,7 @@
 #
 # Non-confidential cloud-hypervisor Kata is deliberately NOT provided here:
 # the official siderolabs/kata-containers extension already ships exactly
-# that. This extension carried a `kata-clh` handler (named `kata` before
-# v1.3.0) until 1.4.0, where it was dropped as duplicated payload.
+# that.
 # =============================================================================
 
 # ----------------------------------------------------------------------------

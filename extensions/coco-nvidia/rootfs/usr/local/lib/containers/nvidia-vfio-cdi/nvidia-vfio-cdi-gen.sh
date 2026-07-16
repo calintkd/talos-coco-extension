@@ -11,17 +11,17 @@
 # backend and fail confidential guests with
 # "ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>".
 # Requires a host kernel with CONFIG_IOMMUFD (=y or =m) +
-# CONFIG_VFIO_DEVICE_CDEV=y. No released Talos kernel enables it yet; both
-# landed on siderolabs main (pkgs#1608 as =m, talos#13765). See the add-on
+# CONFIG_VFIO_DEVICE_CDEV=y. No released Talos kernel enables it; it is
+# enabled upstream and will ship in a future Talos release. See the add-on
 # README.
 #
 # Each GPU is registered under ONE CDI device name: its cdev (vfio0, vfio1,
 # …) — the exact ID the nvidia-sandbox-device-plugin (P_GPU_ALIAS=pgpu)
-# requests. Earlier revisions also aliased the IOMMU-group id and a running
-# index, but those live in different namespaces than the cdev, and flattening
-# all three into CDI's single device-name space with a first-wins dedup could
-# resolve a request to the WRONG GPU on a multi-GPU node. The cdev is already
-# unique per device, so one name is correct and unambiguous.
+# requests. No aliases: the IOMMU-group id and a running index live in
+# different namespaces than the cdev, and flattening all three into CDI's
+# single device-name space with a first-wins dedup could resolve a request to
+# the WRONG GPU on a multi-GPU node. The cdev is already unique per device, so
+# one name is correct and unambiguous.
 #
 # Exit 1 (-> service retry) until at least one vfio-bound NVIDIA GPU exists.
 set -u
@@ -48,7 +48,7 @@ DRV_DIR=/sys/bus/pci/drivers/vfio-pci
 # Check files the base provides and this add-on does NOT: the Kata shim,
 # virtiofsd, and the SNP OVMF firmware (the GPU config's virtio_fs_daemon +
 # firmware paths resolve here). The SNP-experimental QEMU is NOT a valid
-# marker — since v1.5.0 this add-on ships that itself.
+# marker — this add-on ships that itself.
 for f in \
   /usr/local/bin/containerd-shim-kata-v2 \
   /usr/local/libexec/virtiofsd \

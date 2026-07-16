@@ -1,19 +1,23 @@
 # =============================================================================
 # Talos System Extension: Confidential Containers (CoCo) with AMD SEV-SNP
 # =============================================================================
-# Three-stage Dockerfile:
+# Four-stage Dockerfile:
 #   1. Downloads + extracts the official kata-static release tarball and
 #      rewrites /opt/kata/ paths → /usr/local/ in the bundled config files
 #   2. Builds containerd-shim-kata-v2 from source (statically linked)
 #      because the tarball binary is dynamically linked against glibc,
 #      which does not exist on Talos's minimal filesystem
 #   3. Assembles a Talos system extension image (FROM scratch)
+#   4. Verifies the assembled rootfs against its own configs (build-time gate,
+#      not shipped — `make base` runs it via the verify-base prerequisite)
 #
 # Build (preferred): `make base` from the repo root.
-# Manual (context = this directory):
+# Manual (context = this directory) — `--target extension` is REQUIRED, since
+# stage 4 (`verify`) is last and would otherwise be what buildx builds and
+# pushes:
 #   docker buildx build --platform linux/amd64 \
 #     --build-arg KATA_VERSION=3.32.0 \
-#     -f extensions/coco/Dockerfile \
+#     -f extensions/coco/Dockerfile --target extension \
 #     -t ghcr.io/<org>/talos-coco-extension:v<VERSION> --push extensions/coco/
 #
 # Debug (list tarball contents):
@@ -46,8 +50,8 @@ RUN apk add --no-cache curl zstd tar sed
 # hash the shipped Kata config asserts. A GitHub release asset can be replaced
 # in place by anyone with write access to the upstream repo, and the URL does
 # not change when it is; TLS authenticates the host we fetch from, not the
-# bytes it serves. Without this line the honest answer to "how do you know what
-# is in your TCB" is "we downloaded whatever was at that URL that day".
+# bytes it serves. Without this line the TCB is whatever that URL served on the
+# day of the build.
 #
 # This value is corroborated by siderolabs/extensions, which pins the same
 # sha256 for the same file in container-runtime/vars.yaml
@@ -94,17 +98,13 @@ RUN sed -i \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
 
 # kata-qemu-snp deliberately stays on upstream's default hypervisor
-# (@QEMUPATH@ -> qemu-system-x86_64). Earlier revisions rewrote it to
-# qemu-system-x86_64-snp-experimental on the belief that the standard build
-# could not launch an SEV-SNP guest. That is false at Kata 3.32.0: both
-# binaries expose sev-snp-guest, and a standard-QEMU SNP guest was verified
-# on EPYC 9355 hardware (QEMU launched with confidential-guest-support=snp
-# and -object sev-snp-guest,cbitpos=51,policy=196608). The rewrite also
-# pinned production SNP to the older QEMU of the two (11.0.0 vs 11.0.1).
-# Only the GPU config uses the snp-experimental build, per upstream
-# (@QEMUSNPPATH@), and the add-on ships that binary itself.
+# (@QEMUPATH@ -> qemu-system-x86_64): at Kata 3.32.0 both QEMU builds expose
+# sev-snp-guest, so the standard build launches SEV-SNP guests. Do not rewrite
+# this to qemu-system-x86_64-snp-experimental — that build is reserved for the
+# GPU config, which upstream builds against @QEMUSNPPATH@, and the GPU add-on
+# ships the binary itself.
 
-# Debug: show what we have (visible in build log)
+# Debug: list the extracted payload (visible in the build log)
 RUN echo "=== Binaries ===" && ls -1 /kata-static/opt/kata/bin/ \
   && echo "=== Libexec ===" && ls -1 /kata-static/opt/kata/libexec/ \
   && echo "=== Guest assets ===" && ls -1 /kata-static/opt/kata/share/kata-containers/ \
@@ -151,8 +151,7 @@ RUN CGO_ENABLED=0 PREFIX=/usr/local make \
   containerd-shim-v2
 
 # Verify it's static — HARD gate (a dynamic shim silently fails on Talos: no
-# glibc). Use ldd, not file: `file` isn't installed in golang:bookworm, which
-# made the old warn-only check always print its fallback.
+# glibc). Use ldd, not file: `file` is not installed in golang:bookworm.
 RUN ldd containerd-shim-kata-v2 2>&1 | grep -q "not a dynamic executable" \
   && echo "OK: static binary" \
   || { echo "ERROR: shim is dynamically linked"; exit 1; }
@@ -254,11 +253,10 @@ COPY --from=kata-static /tmp/opt-symlink/opt /rootfs/opt
 # =============================================================================
 # Cross-checks the shipped configs against the shipped payload in both
 # directions. The configs come from the upstream tarball, so a Kata bump can
-# silently repoint one at a file we do not ship (build stays green, guest will
-# not boot), or strand a file no config names (dead RAM on every node —
-# kata-containers-initrd-confidential.img shipped unreferenced for five
-# releases at 77 MB, and the ovmf/ dir shipped Intel TDX firmware). Neither is
-# visible without booting a guest, so it is asserted here.
+# silently repoint one at a file this extension does not ship (build stays
+# green, guest will not boot), or strand a file no config names (tens of MB of
+# dead payload resident on every node). Neither is visible without booting a
+# guest, so it is asserted here.
 #
 # Three checks:
 #   1. every path a config names resolves under /usr/local — a sed that

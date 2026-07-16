@@ -97,9 +97,9 @@ Kata's own default for that config (`@QEMUPATH@`).
 Releases up to 1.4.0 rewrote it to `qemu-system-x86_64-snp-experimental`, on
 the belief that the standard build could not launch an SEV-SNP guest. That is
 false at Kata 3.32.0: both binaries expose `sev-snp-guest` with identical
-properties, and a standard-QEMU SNP guest was verified on EPYC 9355 — QEMU
-launched with `-machine confidential-guest-support=snp` and `-object
-sev-snp-guest,cbitpos=51,policy=196608`, which QEMU refuses to start if it
+properties, and a standard-QEMU SNP guest runs on EPYC 9355 — QEMU launches
+with `-machine confidential-guest-support=snp` and `-object
+sev-snp-guest,cbitpos=51,policy=196608`, which it refuses to start if it
 cannot honour. The rewrite also pinned production SNP to the *older* of the
 two binaries (11.0.0 vs 11.0.1).
 
@@ -123,10 +123,9 @@ guest VM, never shared from the host. No pod annotation is required — the TOML
 setting alone activates guest-pull. (Earlier revisions documented an
 `io.containerd.cri.v1.images/unpack: "false"` annotation; it is inert — the
 string exists in neither containerd 2.2.x nor Kata 3.32.0, and pods run
-identically without it, verified on hardware 2026-07-11.) Because the image is
-pulled AND unpacked inside the guest during CreateContainerRequest,
-`create_container_timeout` is raised to 1200 s (kata's 60 s default times out
-on multi-GB images).
+identically without it.) Because the image is pulled AND unpacked inside the
+guest during CreateContainerRequest, `create_container_timeout` is raised to
+1200 s (kata's 60 s default times out on multi-GB images).
 
 ## Bare-metal AMD SEV-SNP deployment
 
@@ -142,7 +141,7 @@ on multi-GB images).
 | IOMMU                                 | Enabled        |
 | NX Mode                               | Enabled        |
 
-### Verified kernel output
+### Expected kernel output
 
 After installing, verify SEV-SNP with `talosctl dmesg`:
 

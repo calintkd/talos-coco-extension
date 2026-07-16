@@ -5,16 +5,14 @@ Add-on system extension for [the base CoCo extension](../coco/README.md) that pr
 GPU VFIO passthrough. The NVIDIA driver and NVRC (NVIDIA's Rust init) run **inside the
 encrypted guest** — the host never loads a GPU driver.
 
-**Proven end-to-end 2026-07-09** on H200 NVL + AMD EPYC (Turin) under Talos v1.13.5:
-`nvidia-smi` in the SNP guest in ~30 s (`conf-compute`: CC ON / ready / PRODUCTION),
-CUDA vectorAdd `Test PASSED`, vLLM v0.24.0 offline inference green in 4m35s
-(10 GB image pulled inside the guest). Re-validated same day on **Kata 3.32.0 /
-QEMU 11.0.0** (`nvidia-smi` + vectorAdd). See the validation ladder below.
+Runs on AMD EPYC (Turin) + NVIDIA H200 NVL under Talos v1.13.5 with Kata 3.32.0
+and QEMU 11.0.0: in-guest `nvidia-smi`, GPU Confidential Computing mode, CUDA
+workloads, and vLLM-class inference with the container image pulled inside the
+guest. See [Supported configuration](#supported-configuration) below.
 
 ## Why a separate extension
 
-The base extension (`coco-kata-containers`) is proven in production use.
-GPU support is isolated here so:
+GPU support is isolated in its own extension so:
 
 - the base artifact stays **byte-identical** — `kata-qemu-coco-dev` /
   `kata-qemu-snp` carry zero new risk from GPU work;
@@ -53,15 +51,14 @@ service (a missing/mismatched base fails the service loudly in
 | `/usr/local/etc/containers/nvidia-vfio-cdi.yaml` | — | Extension service: VFIO CDI spec generator (runs every boot) + base-extension presence guard |
 | `/usr/local/lib/containers/nvidia-vfio-cdi/{busybox,nvidia-vfio-cdi-gen.sh}` | ~1 M | The service's container rootfs: static busybox runner + generator script |
 
-Filenames verified against the `kata-static-3.32.0-amd64.tar.zst` listing (2026-07-09).
 The GPU config's `path =` names this add-on's own
 `qemu-system-x86_64-snp-experimental`; its `firmware =` and `virtio_fs_daemon =`
 resolve to the base extension's `/usr/local/share/ovmf/AMDSEV.fd` and
 `/usr/local/libexec/virtiofsd` — hence the base dependency.
 
-> ⚠️ Upstream ships `nvrc.smi.srs=1` in the TOML's `kernel_params` — NVRC marks the
-> GPU ready **without** GPU attestation (dev shortcut). Review before production
-> use.
+> ⚠️ Upstream ships `nvrc.smi.srs=1` in the TOML's `kernel_params`, and this
+> extension ships that config unchanged: NVRC marks the GPU ready **without**
+> GPU attestation (a dev shortcut). Review before production use.
 
 ## Host requirements (hard prerequisites)
 
@@ -70,15 +67,15 @@ resolve to the base extension's `/usr/local/share/ovmf/AMDSEV.fd` and
 Confidential guests require the VFIO **IOMMUFD cdev** interface
 (`/dev/vfio/devices/vfioN`) — the Kata runtime refuses the legacy group node with
 `ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>`
-(`virtcontainers/qemu.go`). **No _released_ Talos kernel enables IOMMUFD yet**
-(checked through v1.13.6) — but both pieces have merged to siderolabs `main`
+(`virtcontainers/qemu.go`). **No released Talos kernel through v1.13.6 enables
+IOMMUFD** — but both pieces have merged to siderolabs `main`
 ([pkgs#1608](https://github.com/siderolabs/pkgs/pull/1608) as `IOMMUFD=m`,
 [talos#13765](https://github.com/siderolabs/talos/pull/13765) adding
 `iommufd.ko` to the rootfs allowlist), so a stock Talos will carry it from
-v1.14 (and possibly a v1.13.x backport). Until then, build a custom kernel with
-two config changes on `siderolabs/pkgs` — check out the `PKGS` ref pinned in
-the Talos release's Makefile (e.g. Talos v1.13.5 pins `v1.13.0-36-g6b315f7`;
-there is no per-patch-release pkgs tag):
+v1.14. Until then, build a custom kernel with two config changes on
+`siderolabs/pkgs` — check out the `PKGS` ref pinned in the Talos release's
+Makefile (e.g. Talos v1.13.5 pins `v1.13.0-36-g6b315f7`; there is no
+per-patch-release pkgs tag):
 
 ```
 CONFIG_IOMMUFD=m           # =y or =m both work; upstream shipped =m. As a
@@ -100,7 +97,8 @@ make imager PKG_KERNEL=ghcr.io/<org>/kernel:<tag> \
 Build tip: the Talos kernel uses ThinLTO — cap the builder's CPUs (e.g.
 `--cpuset-cpus=0-31`) or the `vmlinux.o` link can OOM on many-core hosts.
 
-Verify on the node after upgrade: `/proc/config.gz` shows both flags `=y`, and
+Verify on the node after upgrade: `/proc/config.gz` shows `CONFIG_IOMMUFD` (`=y`
+or `=m`) and `CONFIG_VFIO_DEVICE_CDEV=y`, and
 `/dev/vfio/devices/` exists once the GPU is bound.
 
 ### 2. GPU Confidential Computing mode ON
@@ -164,7 +162,20 @@ docker run --rm -t -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/_out-g
 ## Deploy (GPU node)
 
 1. BIOS: SEV-SNP recipe **plus ACS enabled** (IOMMU isolation for passthrough).
-2. GPU: **CC mode ON** (see host requirements above).
+2. GPU: **CC mode ON** (see host requirements above), then label the node as its
+   last step:
+
+   ```bash
+   kubectl label node <node> nvidia.com/cc.ready.state=true
+   ```
+
+   `kata-qemu-nvidia-gpu-snp` selects on this label, so **without it GPU pods
+   stay Pending**. Nothing in the cluster sets it: CC mode is persistent
+   per-GPU state and `ccManager` is disabled here, so the label is the operator's
+   assertion that the step was done. It fails closed by design — a Pending pod
+   naming the selector beats a confidential pod scheduling onto a GPU whose CC
+   mode is off and hanging until the sandbox times out. Remove the label before
+   turning CC mode off or swapping the GPU.
 3. Machine config: `patches/machine-config-gpu-worker.yaml` — binds the GPU via
    `machine.kernel.modules` `vfio_pci` `ids=<vendor:device>` parameter (**verify the
    PCI ID against `lspci -nn`**; H100 PCIe `10de:2331`, H200 NVL `10de:233b`).
@@ -193,24 +204,18 @@ io.katacontainers.config.hypervisor.default_vcpus: "8"
 Small images run fine with the 8 GiB / 1 vCPU TOML defaults. The shipped
 `create_container_timeout = 1200` covers multi-minute in-guest pulls.
 
-## Validation ladder
+## Supported configuration
 
-| Stage | Hardware | Proves | Status |
-| --- | --- | --- | --- |
-| Inert wiring | any cluster, no GPU | extension installs, `.part` merges, handler registered in containerd, RuntimeClass applies, GPU pod → **Pending** (not crash) | ✅ 2026-06-12 |
-| Handler fire | SNP-less node, labelled | containerd resolves handler, TOML parses, QEMU launch fails at the expected hardware boundary (no `/dev/sev`) — config plumbing proven | ✅ 2026-06-12 |
-| SNP no GPU | SNP node | full SNP launch path of the GPU config minus the VFIO device (`kata-qemu-snp` guest boots) | ✅ 2026-07-09 |
-| Full | SNP + H200 NVL | VFIO bind (IOMMUFD), NVRC driver injection, `nvidia-smi` in-guest, `conf-compute` CC ON/ready/PRODUCTION, CUDA vectorAdd, vLLM v0.24.0 inference | ✅ 2026-07-09 |
-| Guard service | node with both extensions | `nvidia-vfio-cdi` reaches Finished with the base-presence check + read-only `/usr/local` mount in place; CDI spec written; `nvidia-smi` green in the GPU CVM on the same boot | ✅ 2026-07-11 (H200 NVL) |
-| GPU attestation | SNP + GPU + KBS | NVIDIA GPU attestation (VBIOS RIM + runtime-vs-golden measurements); SNP launch measurement matches the RVPS reference value; composite KBS policy releases a secret only when **both** the SNP measurement and the GPU pass, and denies on either wrong | ✅ 2026-07-15 (H200 NVL) |
-| Workloads | SNP + H200 NVL | vLLM v0.24.0 serving in the GPU CVM (127 GiB KV cache, inference); Qdrant in an SNP CVM; `cc_init_data` → attestation-service `affirming` token | ✅ 2026-07-15 |
+The handler runs on AMD EPYC 9355 (Turin) + NVIDIA H200 NVL under Talos v1.13.5
+with Kata 3.32.0, covering the whole path: SNP guest boot, VFIO bind over
+IOMMUFD, NVRC driver injection, in-guest `nvidia-smi` with GPU Confidential
+Computing mode active, CUDA workloads, and vLLM serving inside the GPU CVM
+(alongside Qdrant on the base extension's plain SNP handler).
 
-**Release status**: `v1.5.1` = `v1.5.0` (SNP-experimental QEMU moved base→add-on,
-−53 % base) plus two fixes found in the v1.5.0 audit — the base-presence guard now
-checks a base-only file (v1.5.0 had left it checking the moved QEMU, so it could
-never fire), and the CDI generator registers each GPU under its cdev name only
-(dropping the group/index aliases that could mis-map on a multi-GPU node). The
-full ladder above — including attestation, composite KBS release, and vLLM/Qdrant
-workloads — was validated on H200 NVL + EPYC 9355 (Turin) under Talos v1.13.5.
-The `nvrc.smi.srs=1` dev shortcut is still present in the shipped TOML — review
-before production (the GPU-attestation row above was proven with it present).
+Composite attestation works with the
+[trustee-operator](https://github.com/confidential-containers/trustee-operator):
+a KBS policy can require both the SNP launch measurement (matched against an
+RVPS reference value) and NVIDIA GPU attestation (VBIOS RIM plus
+runtime-vs-golden measurements), releasing a secret only when both pass and
+denying on either. Note that this coexists with the `nvrc.smi.srs=1` default
+above — the GPU is marked ready without GPU attestation unless you change it.

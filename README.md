@@ -7,10 +7,11 @@ full **AMD SEV-SNP** support, and optional **NVIDIA GPU passthrough into the
 encrypted guest** (driver + NVRC run inside the CVM; the host never loads a GPU
 driver).
 
-**Status**: the base extension runs SEV-SNP production workloads. The GPU add-on
-is proven end-to-end on H200 NVL + AMD EPYC (Turin) under Talos v1.13.5 —
-`nvidia-smi` with `conf-compute` CC ON/ready/PRODUCTION inside the SNP guest,
-CUDA vectorAdd, and vLLM inference (validated 2026-07-09, Kata 3.32.0).
+Both extensions run on AMD EPYC (Turin) with SEV-SNP under Talos v1.13.5 and
+Kata 3.32.0. On that hardware the base extension boots SNP guests; the GPU
+add-on (NVIDIA H200 NVL) additionally gives in-guest `nvidia-smi` with GPU
+Confidential Computing mode active, CUDA workloads, and vLLM-class inference
+with the container image pulled inside the guest.
 
 ## What's in the box
 
@@ -23,8 +24,8 @@ CUDA vectorAdd, and vLLM inference (validated 2026-07-09, Kata 3.32.0).
 
 Why two extensions instead of one: GPU-less nodes (control planes, CPU workers)
 skip the ~512 MB NVIDIA add-on payload — Talos extensions are squashfs images
-appended to the initramfs and resident in RAM — and the proven base artifact
-carries zero risk from GPU work. This mirrors how Talos itself
+appended to the initramfs and resident in RAM — and the base artifact stays
+byte-identical regardless of GPU work. This mirrors how Talos itself
 packages NVIDIA support (separate, version-paired `nvidia-*` extensions
 composed per node). Both extensions of a release share one version and one
 Kata release; `make check-versions` enforces the pairing.
@@ -116,7 +117,7 @@ spec:
 Deep dives: [extensions/coco/README.md](extensions/coco/README.md) (design
 decisions, SEV-SNP attestation walkthrough, troubleshooting) and
 [extensions/coco-nvidia/README.md](extensions/coco-nvidia/README.md) (custom
-kernel, GPU CC mode, CDI service, guest sizing, validation ladder).
+kernel, GPU CC mode, CDI service, guest sizing).
 
 ## Upgrading
 
@@ -128,14 +129,8 @@ kernel, GPU CC mode, CDI service, guest sizing, validation ladder).
   kernel + imager rebuilt for that Talos release first.
 - Never upgrade more than one node at a time; keep etcd quorum.
 
-### Breaking changes in v1.4.0
+### Breaking changes in v1.5.0
 
-- **RuntimeClass/handler `kata-clh` is removed**, along with the whole Cloud
-  Hypervisor payload. Non-confidential Kata on Cloud Hypervisor is what the
-  official `siderolabs/kata-containers` extension provides — install it
-  alongside if you need it. **Before upgrading nodes**: delete any leftover
-  `kata-clh` RuntimeClass and move pods off it, or they will stay Pending
-  against a handler no node registers.
 - `kata-qemu-snp` now runs on the standard `qemu-system-x86_64`, which is
   upstream Kata's default for that config. Earlier releases rewrote it to
   `qemu-system-x86_64-snp-experimental`; that build is now shipped by the GPU
@@ -146,6 +141,15 @@ kernel, GPU CC mode, CDI service, guest sizing, validation ladder).
   (`OVMF.fd`, `OVMF.inteltdx.fd`) dropped outright. The add-on grows only by the
   moved QEMU. Net effect: control-plane and CPU-worker nodes carry ~42 MB less
   RAM-resident image; GPU nodes are ~2 MB lighter (the dropped OVMF).
+
+### Breaking changes in v1.4.0
+
+- **RuntimeClass/handler `kata-clh` is removed**, along with the whole Cloud
+  Hypervisor payload. Non-confidential Kata on Cloud Hypervisor is what the
+  official `siderolabs/kata-containers` extension provides — install it
+  alongside if you need it. **Before upgrading nodes**: delete any leftover
+  `kata-clh` RuntimeClass and move pods off it, or they will stay Pending
+  against a handler no node registers.
 
 ### Breaking changes in v1.3.0
 
@@ -164,7 +168,7 @@ kernel, GPU CC mode, CDI service, guest sizing, validation ladder).
 ## Versioning & releases
 
 - Both manifests carry the same `MAJOR.MINOR.PATCH`; the NVIDIA add-on may
-  trail with an `-rcN` suffix until re-validated on GPU hardware. CI
+  trail with an `-rcN` suffix until validated on GPU hardware. CI
   (`.github/workflows/build.yml`) enforces `make check-versions` and that git
   tags match the base manifest version.
 - The NVIDIA add-on requires the base extension **from the same release** on

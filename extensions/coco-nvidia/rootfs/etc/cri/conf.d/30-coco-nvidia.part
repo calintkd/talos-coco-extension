@@ -14,7 +14,7 @@
 #   - base extension coco-kata-containers from the SAME release (same
 #     version, same Kata — provides virtiofsd, AMDSEV.fd OVMF firmware, and
 #     containerd-shim-kata-v2). This add-on ships its own SNP-experimental
-#     QEMU as of 1.5.0.
+#     QEMU.
 # =============================================================================
 
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata-qemu-nvidia-gpu-snp]

@@ -67,8 +67,8 @@ jobs:
       # Fails CLOSED. `docker manifest inspect` exits non-zero for "tag does
       # not exist" AND for a network error, a 429, or expired auth — so
       # treating every non-zero exit as "unpublished" would let a transient
-      # blip authorise an overwrite of a released, hardware-validated image.
-      # Only a recognised not-found response is accepted as proof of absence.
+      # blip authorise an overwrite of a released image. Only a recognised
+      # not-found response is accepted as proof of absence.
       - name: Refuse to overwrite a published tag
         if: github.ref_type == 'tag'
         run: |

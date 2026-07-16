@@ -33,9 +33,9 @@ TALOS_VERSION ?= v1.13.5
 
 # GPU workers need a custom imager whose install artifacts carry the
 # CONFIG_IOMMUFD (=y or =m) + CONFIG_VFIO_DEVICE_CDEV=y kernel (no released
-# Talos kernel enables it yet — both merged to siderolabs main 2026-07-15,
-# pkgs#1608 as =m + talos#13765; see coco-nvidia/README.md "Custom Talos
-# kernel"). Drop this once a Talos release carries iommufd.
+# Talos kernel enables it; it is enabled upstream and will ship in a future
+# Talos release — see coco-nvidia/README.md "Custom Talos kernel"). Drop this
+# once a Talos release carries iommufd.
 GPU_IMAGER    ?= $(REGISTRY)/$(USERNAME)/imager:$(TALOS_VERSION)
 
 # Parse metadata.version out of each manifest. Anchored to the `metadata:`
@@ -113,9 +113,9 @@ verify-nvidia:
 
 # Installers.
 #
-# Each target writes to its OWN output directory. They used to share
-# _out/installer-amd64.tar, which meant a cpu build silently clobbered a gpu
-# build (and a concurrent `crane push` would stream a half-overwritten tar).
+# Each target writes to its OWN output directory: a shared
+# _out/installer-amd64.tar would let a cpu build silently clobber a gpu build
+# (and a concurrent `crane push` would stream a half-overwritten tar).
 #
 # The tag carries the EXTENSION version, not just the Talos/Kata versions:
 # different extension releases otherwise produce byte-different installers

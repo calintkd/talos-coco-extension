@@ -1,7 +1,7 @@
 # =============================================================================
 # Talos System Extension: NVIDIA GPU add-on for Confidential Containers
 # =============================================================================
-# Two-stage Dockerfile:
+# Three-stage Dockerfile (plus a busybox source stage for the CDI service):
 #   1. Downloads + extracts the official kata-static release tarball and
 #      rewrites /opt/kata/ paths → /usr/local/ (byte-identical steps to the
 #      base extension's Stage 1 → Docker layer cache shares the ~1.5 GB
@@ -9,8 +9,10 @@
 #   2. Assembles the add-on extension (FROM scratch) with the NVIDIA bits
 #      (GPU+SNP Kata config, NVIDIA guest kernel, NVIDIA confidential guest
 #      image ~533 MiB in Kata 3.32.0 — Ubuntu noble + driver + NVRC; was
-#      ~1.1 GB in the 3.30.0 tarball) AND, since 1.5.0, the SNP-experimental
-#      QEMU + its datadir (the GPU config is the only thing that names it).
+#      ~1.1 GB in the 3.30.0 tarball) AND the SNP-experimental QEMU + its
+#      datadir (the GPU config is the only thing that names it).
+#   3. Verifies the assembled rootfs against its own config (build-time gate,
+#      not shipped — `make nvidia` runs it via the verify-nvidia prerequisite)
 #
 # virtiofsd, the Kata shim, and OVMF AMDSEV.fd come from the BASE extension —
 # this add-on requires coco-kata-containers from the SAME release (same
@@ -84,7 +86,7 @@ RUN sed -i \
   's|^experimental_force_guest_pull = false|experimental_force_guest_pull = true|' \
   /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-nvidia-gpu-snp.toml
 
-# Sanity gate — verified against the 3.32.0 tarball listing (2026-07-09):
+# Sanity gate on the extracted 3.32.0 tarball:
 #  - the GPU+SNP TOML exists and (post-rewrite) references the
 #    SNP-experimental QEMU and the AMDSEV.fd firmware the BASE ships
 #  - the NVIDIA guest kernel + confidential image symlinks resolve
@@ -121,8 +123,8 @@ COPY --from=kata-static \
 # Upstream builds configuration-qemu-nvidia-gpu-snp.toml against @QEMUSNPPATH@,
 # so this handler — and ONLY this handler — needs the snp-experimental binary.
 # It lives here rather than in the base because the base's own handlers run on
-# the standard QEMU (verified on SEV-SNP hardware), which made ~38 MB of this
-# payload dead weight on every control-plane and CPU-worker node.
+# the standard QEMU: shipping it in the base would put ~38 MB of unused payload
+# on every control-plane and CPU-worker node.
 # The datadir is resolved by a compiled-in path (/opt/kata/share/
 # kata-qemu-snp-experimental/qemu) — the base's /opt/kata -> /usr/local symlink
 # makes it resolve; both extensions land in one merged rootfs.
@@ -163,7 +165,7 @@ COPY rootfs/usr/local/etc/containers/nvidia-vfio-cdi.yaml \
   /rootfs/usr/local/etc/containers/nvidia-vfio-cdi.yaml
 
 # =============================================================================
-# Stage 4: Verify the assembled rootfs
+# Stage 3: Verify the assembled rootfs
 # =============================================================================
 # Same contract as the base extension's verify stage, with one addition that
 # matters here: this add-on's config legitimately names files the BASE ships

@@ -7,10 +7,10 @@
 #
 # ⚠ Do NOT re-apply this with `talosctl patch mc`: Talos MERGES list-valued
 #   fields by APPEND, so machine.kernel.modules gains a duplicate set on every
-#   apply (observed three times over on a dev node). Duplicates are harmless
-#   here — the modules are idempotent — but they make the live config diverge
-#   from this file, so what you validated is no longer what git says. Use
-#   `talosctl edit mc`, or regenerate the config from this patch, and reboot.
+#   apply. Duplicates are harmless here — the modules are idempotent — but they
+#   make the live config diverge from this file, so what you validated is no
+#   longer what git says. Use `talosctl edit mc`, or regenerate the config from
+#   this patch, and reboot.
 #
 # The GPU never gets a host driver: the device is bound to vfio-pci at boot
 # via the vfio_pci module parameter below. The NVIDIA driver + NVRC run inside
@@ -20,14 +20,14 @@
 #   - Talos v1.13 UKI/systemd-boot IGNORES install.extraKernelArgs
 #     ("extra kernel arguments are not supported when booting using SDBoot"),
 #     and the v1.13.5 installer REJECTS it in combination with
-#     grubUseUKICmdline. Verified on real hardware 2026-07-08.
+#     grubUseUKICmdline.
 #   - The machine.kernel.modules parameters below are the working method.
 #   - If a platform genuinely needs cmdline args, bake them at image-build
 #     time via `imager ... --extra-kernel-arg`, not via machine config.
 #   - modprobe.blacklist / amd_iommu=on / iommu=pt are unnecessary: Talos
 #     ships no host NVIDIA driver (nothing to blacklist) and the AMD IOMMU
-#     is active by default when enabled in firmware (verified: IOMMU groups
-#     form and VFIO passthrough works without any of these args).
+#     is active by default when enabled in firmware — IOMMU groups form and
+#     VFIO passthrough works without any of these args.
 # =============================================================================
 
 machine:
