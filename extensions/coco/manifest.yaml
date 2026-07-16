@@ -1,7 +1,7 @@
 version: v1alpha1
 metadata:
   name: coco-kata-containers
-  version: 1.5.1
+  version: 1.6.0
   author: CoCo Extension (custom)
   description: |
     Confidential Containers (CoCo) runtime extension for Talos Linux.

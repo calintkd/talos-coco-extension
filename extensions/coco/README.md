@@ -34,7 +34,7 @@ one. That is why this extension ships QEMU rather than reusing CLH.
 │                                           │ Guest      │        │
 │                                           │ Kernel     │        │
 │                                           │ + image    │        │
-│  /opt/kata → /usr/local (symlink)         │ + OVMF     │        │
+│  bin/qemu-bundle (datadir redirect)       │ + OVMF     │        │
 │                                           │ (SEV-SNP)  │        │
 │                                           └────────────┘        │
 └─────────────────────────────────────────────────────────────────┘
@@ -69,7 +69,7 @@ instead of the extension. `make base` sets it for you.
 | `/usr/local/share/kata-containers/`                  | Confidential guest kernel + image, configs  |
 | `/usr/local/share/ovmf/AMDSEV.fd`                    | OVMF firmware for SEV-SNP                   |
 | `/usr/local/share/kata-qemu/`                        | QEMU datadir (ROMs, firmware blobs)         |
-| `/opt/kata`                                          | Symlink → `/usr/local`                      |
+| `/usr/local/bin/qemu-bundle/`                        | QEMU datadir redirect (see below)           |
 | `/etc/cri/conf.d/20-coco.part`                       | Containerd runtime handler config           |
 
 The build asserts this list against the shipped configs in both directions
@@ -109,11 +109,21 @@ which is the only thing that names it. Keeping it here cost every
 control-plane and CPU-worker node ~38 MB of RAM-resident QEMU it could never
 execute.
 
-### /opt/kata symlink
+### qemu-bundle: the datadir redirect
 
-Both QEMU binaries have `/opt/kata/` data-directory paths compiled in (ROM
-files like `kvmvapic.bin`). Extensions install to `/usr/local/`, so the
-extension ships a symlink `/opt/kata → /usr/local`.
+kata-static builds QEMU with `--disable-relocatable`, so the binary searches
+for its ROM files (`kvmvapic.bin`, `efi-virtio.rom`, ...) at the literal
+compiled-in path `/opt/kata/share/kata-qemu/qemu` — it does not relocate
+relative to its own location. QEMU checks one thing before that fallback,
+regardless of the relocatable setting: if `<exec_dir>/qemu-bundle` exists,
+every configured path is looked up under it first. The extension therefore
+ships `/usr/local/bin/qemu-bundle/opt/kata/share/kata-qemu` as a relative
+symlink back into `/usr/local/share/kata-qemu`, redirecting the compiled-in
+path into the shipped tree. Everything stays under `/usr/local` — the path
+Talos allows extensions to populate. (Earlier releases shipped an
+`/opt/kata → /usr/local` symlink at the filesystem root instead; `/opt` is
+not an allowed extension path.) The build asserts the redirect resolves
+(verify check 4).
 
 ### Guest-pull mode
 
@@ -205,8 +215,9 @@ kata-static tarball at `opt/kata/share/ovmf/`.
 
 ### `Failed to open file "kvmvapic.bin": No such file or directory`
 
-QEMU can't find its ROM files. The `/opt/kata → /usr/local` symlink resolves
-this.
+QEMU can't find its ROM files: the `qemu-bundle` redirect is missing or does
+not resolve (see "qemu-bundle" above). `make verify-base` asserts it at build
+time.
 
 ### `failed to mount .../rootfs: ENOENT`
 

@@ -102,6 +102,14 @@ RUN test -f /kata-static/opt/kata/share/defaults/kata-containers/configuration-q
        /kata-static/opt/kata/share/defaults/kata-containers/configuration-qemu-nvidia-gpu-snp.toml \
   && echo "OK: NVIDIA add-on artifacts verified"
 
+# Prepare the qemu-bundle tree for COPY into the scratch stage (rationale at
+# the COPY site). Relative target, stays inside /usr/local:
+#   /usr/local/bin/qemu-bundle/opt/kata/share/kata-qemu-snp-experimental
+#     -> ../../../../../share/kata-qemu-snp-experimental
+RUN mkdir -p /tmp/qemu-bundle/opt/kata/share \
+  && ln -s ../../../../../share/kata-qemu-snp-experimental \
+       /tmp/qemu-bundle/opt/kata/share/kata-qemu-snp-experimental
+
 # =============================================================================
 # Stage 2: Assemble the Talos system extension image (FROM scratch)
 # =============================================================================
@@ -126,14 +134,19 @@ COPY --from=kata-static \
 # the standard QEMU: shipping it in the base would put ~38 MB of unused payload
 # on every control-plane and CPU-worker node.
 # The datadir is resolved by a compiled-in path (/opt/kata/share/
-# kata-qemu-snp-experimental/qemu) — the base's /opt/kata -> /usr/local symlink
-# makes it resolve; both extensions land in one merged rootfs.
+# kata-qemu-snp-experimental/qemu — kata-static QEMU is built
+# --disable-relocatable), redirected back into /usr/local via QEMU's
+# <exec_dir>/qemu-bundle lookup. This add-on ships its OWN bundle entry for
+# its own datadir; the base ships the entry for kata-qemu. The bundle
+# directories merge in the combined rootfs (same exec_dir /usr/local/bin),
+# and everything stays under /usr/local — Talos's allowed extension path.
 COPY --from=kata-static \
   /kata-static/opt/kata/bin/qemu-system-x86_64-snp-experimental \
   /rootfs/usr/local/bin/qemu-system-x86_64-snp-experimental
 COPY --from=kata-static \
   /kata-static/opt/kata/share/kata-qemu-snp-experimental/ \
   /rootfs/usr/local/share/kata-qemu-snp-experimental/
+COPY --from=kata-static /tmp/qemu-bundle /rootfs/usr/local/bin/qemu-bundle
 
 # -- NVIDIA guest kernel (version tracks the Kata release; COPY dereferences the symlink)
 COPY --from=kata-static \
@@ -213,6 +226,7 @@ RUN set -eu; \
     p="${f#/rootfs}"; \
     case "$p" in \
       */share/kata-qemu-snp-experimental/*) continue ;; \
+      */bin/qemu-bundle/*) continue ;; \
       */share/kata-containers/configuration-*.toml) continue ;; \
       */lib/containers/nvidia-vfio-cdi/*) continue ;; \
       */etc/containers/nvidia-vfio-cdi.yaml) continue ;; \
@@ -220,11 +234,18 @@ RUN set -eu; \
     if echo "$refs" | grep -qxF "$p"; then echo "  ok       $p"; \
     else echo "  DEAD     $p (shipped, named by nothing)"; rc=1; fi; \
   done; \
+  echo "--- 4. the qemu-bundle redirect must resolve to the shipped datadir:"; \
+  bundle=/rootfs/usr/local/bin/qemu-bundle/opt/kata/share/kata-qemu-snp-experimental; \
+  if [ -d "$bundle/qemu" ]; then echo "  ok       $bundle -> $(readlink "$bundle")"; \
+  else echo "  BROKEN   $bundle (does not resolve to a datadir with qemu/)"; rc=1; fi; \
   if [ "$rc" -eq 0 ]; then echo "OK: rootfs self-consistent"; \
   else echo "FAIL: rootfs inconsistent"; fi; \
   exit "$rc"
 
 # Allowlist reasons (check 3):
+#   bin/qemu-bundle/**                   the datadir redirect, resolved by
+#                                        QEMU's <exec_dir>/qemu-bundle lookup;
+#                                        asserted by check 4
 #   share/kata-qemu-snp-experimental/**  QEMU datadir, resolved by a
 #                                        compiled-in path, never named by a
 #                                        config key

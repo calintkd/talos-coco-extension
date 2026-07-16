@@ -129,6 +129,14 @@ kernel, GPU CC mode, CDI service, guest sizing).
   kernel + imager rebuilt for that Talos release first.
 - Never upgrade more than one node at a time; keep etcd quorum.
 
+### Changes in v1.6.0
+
+- The `/opt/kata → /usr/local` symlink at the filesystem root is replaced by
+  QEMU's `qemu-bundle` mechanism under `/usr/local/bin/` (see
+  [extensions/coco/README.md](extensions/coco/README.md), "qemu-bundle"). The
+  extensions no longer place anything outside `/usr/local` and `/etc/cri/conf.d`
+  — the paths Talos allows extensions to populate. No pod-visible change.
+
 ### Breaking changes in v1.5.0
 
 - `kata-qemu-snp` now runs on the standard `qemu-system-x86_64`, which is

@@ -110,8 +110,13 @@ RUN echo "=== Binaries ===" && ls -1 /kata-static/opt/kata/bin/ \
   && echo "=== Guest assets ===" && ls -1 /kata-static/opt/kata/share/kata-containers/ \
   && echo "=== Config files ===" && ls -1 /kata-static/opt/kata/share/defaults/kata-containers/*.toml
 
-# Create /opt/kata → /usr/local symlink for COPY into scratch stage
-RUN mkdir -p /tmp/opt-symlink/opt && ln -sf /usr/local /tmp/opt-symlink/opt/kata
+# Prepare the qemu-bundle tree for COPY into the scratch stage (see the
+# extension-stage comment at the COPY site for why this exists).
+# The symlink target is RELATIVE and stays inside /usr/local:
+#   /usr/local/bin/qemu-bundle/opt/kata/share/kata-qemu
+#     -> ../../../../../share/kata-qemu  ==  /usr/local/share/kata-qemu
+RUN mkdir -p /tmp/qemu-bundle/opt/kata/share \
+  && ln -s ../../../../../share/kata-qemu /tmp/qemu-bundle/opt/kata/share/kata-qemu
 
 # =============================================================================
 # Stage 2: Build containerd-shim-kata-v2 from source (statically linked)
@@ -207,8 +212,8 @@ COPY --from=kata-static \
 
 # -- QEMU datadir (ROMs, firmware blobs) --------------------------------------
 # qemu-system-x86_64 resolves this by a COMPILED-IN path (/opt/kata/share/
-# kata-qemu/qemu), not via any config key — hence the /opt/kata symlink below,
-# and hence the verify stage cannot check this tree by config reference.
+# kata-qemu/qemu), not via any config key — hence the qemu-bundle redirect
+# below, and hence the verify stage cannot check this tree by config reference.
 # The kata-qemu-snp-experimental tree is not shipped here; it belongs with the
 # binary that reads it, in the GPU add-on.
 COPY --from=kata-static \
@@ -241,12 +246,24 @@ COPY --from=kata-static \
 COPY rootfs/etc/cri/conf.d/20-coco.part \
   /rootfs/etc/cri/conf.d/20-coco.part
 
-# -- Symlink /opt/kata → /usr/local -------------------------------------------
-# QEMU binaries have /opt/kata/ paths compiled in (e.g., data directory for ROM
-# files, firmware paths). Since Talos extensions install to /usr/local/, this
-# symlink makes all compiled-in paths work transparently.
-# Note: Created in kata-static stage via a preparatory step, then copied here.
-COPY --from=kata-static /tmp/opt-symlink/opt /rootfs/opt
+# -- qemu-bundle: redirect QEMU's compiled-in /opt/kata datadir ----------------
+# kata-static builds QEMU with --disable-relocatable
+# (tools/packaging/scripts/configure-hypervisor.sh), so the datadir search list
+# is the LITERAL compiled-in [/opt/kata/share/qemu-firmware,
+# /opt/kata/share/kata-qemu/qemu] — the binary does not relocate relative to
+# its own location, and without help it cannot find its ROM files from
+# /usr/local ("qemu: could not load PC BIOS 'bios-256k.bin'").
+#
+# QEMU's get_relocated_path() checks ONE thing before that literal fallback,
+# active regardless of the relocatable setting: if <exec_dir>/qemu-bundle
+# exists, every configured path is looked up under it first. So
+# /usr/local/bin/qemu-bundle/opt/kata/share/kata-qemu (a relative symlink to
+# ../../../../../share/kata-qemu) redirects the compiled-in path back into the
+# shipped tree — no /opt at the filesystem root, nothing outside /usr/local
+# (which keeps the rootfs inside Talos's extension AllowedPaths), no QEMU
+# rebuild. Earlier releases shipped /opt/kata -> /usr/local at the root
+# instead; that worked on Talos but /opt is not an allowed extension path.
+COPY --from=kata-static /tmp/qemu-bundle /rootfs/usr/local/bin/qemu-bundle
 
 # =============================================================================
 # Stage 4: Verify the assembled rootfs
@@ -258,15 +275,19 @@ COPY --from=kata-static /tmp/opt-symlink/opt /rootfs/opt
 # dead payload resident on every node). Neither is visible without booting a
 # guest, so it is asserted here.
 #
-# Three checks:
+# Four checks:
 #   1. every path a config names resolves under /usr/local — a sed that
-#      silently stops matching leaves an /opt/kata path, which would otherwise
-#      only surface as a boot failure (the /opt/kata symlink would even mask it)
+#      silently stops matching leaves an /opt/kata path, which now fails at
+#      boot (nothing at /opt any more), so it must be caught here
 #   2. every named path exists
 #   3. every payload file is either named by a config or explicitly allowlisted
 #      below. The allowlist is NOT a rubber stamp: each entry is something
 #      resolved by a mechanism other than a config key, and each needs a
 #      stated reason.
+#   4. the qemu-bundle redirect RESOLVES: QEMU's compiled-in datadir path,
+#      looked up through <exec_dir>/qemu-bundle, must land on the shipped
+#      datadir tree — this is what breaks silently if a Kata bump changes the
+#      compiled-in prefix or the tree layout.
 #
 # Run via `make verify-base`; CI runs it on every build.
 FROM alpine:3.21 AS verify
@@ -297,6 +318,8 @@ RUN set -eu; \
     case "$p" in \
       */share/kata-qemu/*) \
         continue ;; \
+      */bin/qemu-bundle/*) \
+        continue ;; \
       */share/kata-containers/configuration-*.toml) \
         continue ;; \
       */bin/containerd-shim-kata-v2) \
@@ -305,6 +328,10 @@ RUN set -eu; \
     if echo "$refs" | grep -qxF "$p"; then echo "  ok      $p"; \
     else echo "  DEAD    $p (shipped, named by nothing)"; rc=1; fi; \
   done; \
+  echo "--- 4. the qemu-bundle redirect must resolve to the shipped datadir:"; \
+  bundle=/rootfs/usr/local/bin/qemu-bundle/opt/kata/share/kata-qemu; \
+  if [ -d "$bundle/qemu" ]; then echo "  ok      $bundle -> $(readlink "$bundle")"; \
+  else echo "  BROKEN  $bundle (does not resolve to a datadir with qemu/)"; rc=1; fi; \
   if [ "$rc" -eq 0 ]; then echo "OK: rootfs self-consistent"; \
   else echo "FAIL: rootfs inconsistent"; fi; \
   exit "$rc"
@@ -312,6 +339,9 @@ RUN set -eu; \
 # Allowlist reasons (check 3):
 #   share/kata-qemu/**            QEMU's datadir, resolved by a compiled-in
 #                                 path, never named by a config key
+#   bin/qemu-bundle/**            the datadir redirect itself, resolved by
+#                                 QEMU's <exec_dir>/qemu-bundle lookup — its
+#                                 correctness is asserted by check 4
 #   configuration-*.toml          the configs themselves
 #   bin/containerd-shim-kata-v2   containerd resolves it from runtime_type
 #                                 io.containerd.kata.v2, not from a path

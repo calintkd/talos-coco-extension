@@ -1,7 +1,7 @@
 version: v1alpha1
 metadata:
   name: coco-kata-nvidia-gpu
-  version: 1.5.1
+  version: 1.6.0
   author: CoCo Extension (custom)
   description: |
     NVIDIA GPU add-on (Kata Containers 3.32.0) for the Talos CoCo extension
@@ -17,7 +17,7 @@ metadata:
     handler's config against @QEMUSNPPATH@, and this is the only handler
     that names it — the base's handlers run on the standard QEMU.
     Requires the base coco-kata-containers extension from the SAME
-    release (>= 1.5.1, same Kata version — guest assets must match the
+    release (>= 1.6.0, same Kata version — guest assets must match the
     base's shim) on the same node (provides AMDSEV.fd OVMF firmware,
     virtiofsd, and the statically linked Kata shim) AND a Talos
     kernel with CONFIG_IOMMUFD (=y or =m) +
