@@ -44,6 +44,8 @@ service (a missing/mismatched base fails the service loudly in
 
 | Path | Size | Description |
 | --- | --- | --- |
+| `/usr/local/bin/qemu-system-x86_64-snp-experimental` | ~70 M | SNP-experimental QEMU (11.0.0) — the GPU config's hypervisor; ships here as of 1.5.0 |
+| `/usr/local/share/kata-qemu-snp-experimental/` | ~14 M | Datadir (ROMs, firmware blobs) for the above |
 | `/usr/local/share/kata-containers/configuration-qemu-nvidia-gpu-snp.toml` | 34 K | Kata config for SNP + GPU passthrough (path-rewritten, guest-pull enabled, dm-verity hash inline) |
 | `/usr/local/share/kata-containers/vmlinuz-nvidia-gpu.container` | ~8 M | NVIDIA guest kernel (version tracks the Kata release) |
 | `/usr/local/share/kata-containers/kata-containers-nvidia-gpu-confidential.img` | ~533 M | Ubuntu-noble guest rootfs with NVIDIA driver + NVRC (595.58.03 in Kata 3.30–3.32; the 3.30 image was ~1.1 G) |
@@ -52,8 +54,10 @@ service (a missing/mismatched base fails the service loudly in
 | `/usr/local/lib/containers/nvidia-vfio-cdi/{busybox,nvidia-vfio-cdi-gen.sh}` | ~1 M | The service's container rootfs: static busybox runner + generator script |
 
 Filenames verified against the `kata-static-3.32.0-amd64.tar.zst` listing (2026-07-09).
-The TOML references the base extension's QEMU (`qemu-system-x86_64-snp-experimental`)
-and OVMF (`/usr/local/share/ovmf/AMDSEV.fd`) — hence the base dependency.
+The GPU config's `path =` names this add-on's own
+`qemu-system-x86_64-snp-experimental`; its `firmware =` and `virtio_fs_daemon =`
+resolve to the base extension's `/usr/local/share/ovmf/AMDSEV.fd` and
+`/usr/local/libexec/virtiofsd` — hence the base dependency.
 
 > ⚠️ Upstream ships `nvrc.smi.srs=1` in the TOML's `kernel_params` — NVRC marks the
 > GPU ready **without** GPU attestation (dev shortcut). Review before production
@@ -66,13 +70,20 @@ and OVMF (`/usr/local/share/ovmf/AMDSEV.fd`) — hence the base dependency.
 Confidential guests require the VFIO **IOMMUFD cdev** interface
 (`/dev/vfio/devices/vfioN`) — the Kata runtime refuses the legacy group node with
 `ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>`
-(`virtcontainers/qemu.go`). **No stock Talos kernel enables IOMMUFD.** Build a
-custom kernel with exactly two config changes on `siderolabs/pkgs` — check out
-the `PKGS` ref pinned in the Talos release's Makefile (e.g. Talos v1.13.5 pins
-`v1.13.0-36-g6b315f7`; there is no per-patch-release pkgs tag):
+(`virtcontainers/qemu.go`). **No _released_ Talos kernel enables IOMMUFD yet**
+(checked through v1.13.6) — but both pieces have merged to siderolabs `main`
+([pkgs#1608](https://github.com/siderolabs/pkgs/pull/1608) as `IOMMUFD=m`,
+[talos#13765](https://github.com/siderolabs/talos/pull/13765) adding
+`iommufd.ko` to the rootfs allowlist), so a stock Talos will carry it from
+v1.14 (and possibly a v1.13.x backport). Until then, build a custom kernel with
+two config changes on `siderolabs/pkgs` — check out the `PKGS` ref pinned in
+the Talos release's Makefile (e.g. Talos v1.13.5 pins `v1.13.0-36-g6b315f7`;
+there is no per-patch-release pkgs tag):
 
 ```
-CONFIG_IOMMUFD=y            # must be =y (VFIO_DEVICE_CDEV is bool, depends on it)
+CONFIG_IOMMUFD=m           # =y or =m both work; upstream shipped =m. As a
+                           # module it auto-loads via depmod as a vfio dep —
+                           # no machine.kernel.modules entry needed.
 CONFIG_VFIO_DEVICE_CDEV=y
 ```
 
@@ -122,10 +133,13 @@ Manual build (context = this directory):
 ```bash
 docker buildx build --platform linux/amd64 \
   --build-arg KATA_VERSION=3.32.0 \
-  -f extensions/coco-nvidia/Dockerfile \
+  -f extensions/coco-nvidia/Dockerfile --target extension \
   -t ghcr.io/<your-org>/talos-coco-nvidia:v<VERSION> \
   --push extensions/coco-nvidia/
 ```
+
+`--target extension` is required — the Dockerfile's final stage is the
+build-time `verify` self-check, not the extension. `make nvidia` sets it.
 
 ## Installer composition (per node role)
 
@@ -140,7 +154,7 @@ make installer-cpu     # CP / CPU worker — base only, stock imager/kernel
 Equivalent manual GPU-worker invocation:
 
 ```bash
-docker run --rm -t -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/_out:/out \
+docker run --rm -t -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/_out-gpu:/out \
   ghcr.io/<your-org>/imager:<talos-version> installer --arch amd64 \
   --base-installer-image ghcr.io/siderolabs/installer-base:<talos-version> \
   --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v<VERSION> \
@@ -188,8 +202,15 @@ Small images run fine with the 8 GiB / 1 vCPU TOML defaults. The shipped
 | SNP no GPU | SNP node | full SNP launch path of the GPU config minus the VFIO device (`kata-qemu-snp` guest boots) | ✅ 2026-07-09 |
 | Full | SNP + H200 NVL | VFIO bind (IOMMUFD), NVRC driver injection, `nvidia-smi` in-guest, `conf-compute` CC ON/ready/PRODUCTION, CUDA vectorAdd, vLLM v0.24.0 inference | ✅ 2026-07-09 |
 | Guard service | node with both extensions | `nvidia-vfio-cdi` reaches Finished with the base-presence check + read-only `/usr/local` mount in place; CDI spec written; `nvidia-smi` green in the GPU CVM on the same boot | ✅ 2026-07-11 (H200 NVL) |
-| GPU attestation | SNP + GPU + KBS | remove `nvrc.smi.srs=1`, full GPU evidence chain | ⬜ open |
+| GPU attestation | SNP + GPU + KBS | NVIDIA GPU attestation (VBIOS RIM + runtime-vs-golden measurements); SNP launch measurement matches the RVPS reference value; composite KBS policy releases a secret only when **both** the SNP measurement and the GPU pass, and denies on either wrong | ✅ 2026-07-15 (H200 NVL) |
+| Workloads | SNP + H200 NVL | vLLM v0.24.0 serving in the GPU CVM (127 GiB KV cache, inference); Qdrant in an SNP CVM; `cc_init_data` → attestation-service `affirming` token | ✅ 2026-07-15 |
 
-**Release status**: `v1.3.0` = the hardware-proven `v1.3.0-rc1` content plus
-the base-presence guard in the CDI service (non-recursive read-only
-`/usr/local` bind). Guard + full GPU path validated on H200 NVL 2026-07-11.
+**Release status**: `v1.5.1` = `v1.5.0` (SNP-experimental QEMU moved base→add-on,
+−53 % base) plus two fixes found in the v1.5.0 audit — the base-presence guard now
+checks a base-only file (v1.5.0 had left it checking the moved QEMU, so it could
+never fire), and the CDI generator registers each GPU under its cdev name only
+(dropping the group/index aliases that could mis-map on a multi-GPU node). The
+full ladder above — including attestation, composite KBS release, and vLLM/Qdrant
+workloads — was validated on H200 NVL + EPYC 9355 (Turin) under Talos v1.13.5.
+The `nvrc.smi.srs=1` dev shortcut is still present in the shipped TOML — review
+before production (the GPU-attestation row above was proven with it present).

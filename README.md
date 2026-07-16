@@ -16,13 +16,13 @@ CUDA vectorAdd, and vLLM inference (validated 2026-07-09, Kata 3.32.0).
 
 | Artifact | Extension name | Provides | Compressed size |
 | --- | --- | --- | --- |
-| `extensions/coco/` → `ghcr.io/<org>/talos-coco-extension` | `coco-kata-containers` | Kata shim (static rebuild), QEMU + its datadir, virtiofsd, confidential guest kernel + image, AMDSEV.fd OVMF, handlers `kata-qemu-snp` / `kata-qemu-coco-dev` | ~160 MB |
-| `extensions/coco-nvidia/` → `ghcr.io/<org>/talos-coco-nvidia` | `coco-kata-nvidia-gpu` | Handler `kata-qemu-nvidia-gpu-snp`: NVIDIA guest kernel + confidential guest image (driver + NVRC), GPU+SNP Kata config, SNP-experimental QEMU + datadir, boot-time VFIO CDI spec generator service | ~488 MB |
+| `extensions/coco/` → `ghcr.io/<org>/talos-coco-extension` | `coco-kata-containers` | Kata shim (static rebuild), QEMU + its datadir, virtiofsd, confidential guest kernel + image, AMDSEV.fd OVMF, handlers `kata-qemu-snp` / `kata-qemu-coco-dev` | ~156 MB |
+| `extensions/coco-nvidia/` → `ghcr.io/<org>/talos-coco-nvidia` | `coco-kata-nvidia-gpu` | Handler `kata-qemu-nvidia-gpu-snp`: NVIDIA guest kernel + confidential guest image (driver + NVRC), GPU+SNP Kata config, SNP-experimental QEMU + datadir, boot-time VFIO CDI spec generator service | ~512 MB |
 | `deploy/` | — | `runtime-classes.yaml` (all three RuntimeClasses, apply once), NVIDIA GPU Operator values for Talos | — |
 | `patches/` | — | Machine-config patches per node role | — |
 
 Why two extensions instead of one: GPU-less nodes (control planes, CPU workers)
-skip the ~450 MB NVIDIA guest payload — Talos extensions are squashfs images
+skip the ~512 MB NVIDIA add-on payload — Talos extensions are squashfs images
 appended to the initramfs and resident in RAM — and the proven base artifact
 carries zero risk from GPU work. This mirrors how Talos itself
 packages NVIDIA support (separate, version-paired `nvidia-*` extensions
@@ -42,7 +42,7 @@ artifacts.
 |                     | CoCo Helm chart (Ubuntu/RHEL)          | This repo (Talos)                                  |
 | ------------------- | -------------------------------------- | -------------------------------------------------- |
 | Install method      | DaemonSet extracts tarball at runtime  | System extensions baked into the installer image   |
-| Payload per node    | Full ~1.5 GiB image on **every** node  | Role-scoped: GPU bits only on GPU nodes            |
+| Payload per node    | Full ~1.5 GB image on **every** node  | Role-scoped: GPU bits only on GPU nodes            |
 | Shim                | Dynamically linked (host glibc)        | Statically rebuilt from source                     |
 | RuntimeClasses      | Created by the chart                   | One `kubectl apply -f deploy/runtime-classes.yaml` |
 | Attestation (Trustee/KBS) | Not included (separate)          | Not included — use the [trustee-operator](https://github.com/confidential-containers/trustee-operator) (works unchanged on Talos) |
@@ -73,10 +73,10 @@ Prerequisites: Docker with Buildx, [`crane`](https://github.com/google/go-contai
 # 1. Build + push both extensions (versions come from the manifests)
 make images PUSH=true
 
-# 2. Build the installer for the node role
-make installer-cpu        # control planes / CPU workers
-make installer-gpu        # GPU workers (needs the custom IOMMUFD imager)
-crane push _out/installer-amd64.tar ghcr.io/<org>/talos-installer:<tag>
+# 2. Build the installer for the node role (each target writes its own dir)
+make installer-cpu        # control planes / CPU workers  -> _out-cpu/
+make installer-gpu        # GPU workers (needs the custom IOMMUFD imager) -> _out-gpu/
+crane push _out-gpu/installer-amd64.tar ghcr.io/<org>/talos-installer:<tag>
 
 # 3. Generate machine config with the matching patch
 talosctl gen config my-cluster https://<NODE-IP>:6443 \
@@ -141,9 +141,11 @@ kernel, GPU CC mode, CDI service, guest sizing, validation ladder).
   `qemu-system-x86_64-snp-experimental`; that build is now shipped by the GPU
   add-on, which is the only thing whose config names it. No pod-visible
   change — SNP guests are launched identically.
-- Base extension is ~198 MB → **~160 MB**; the add-on grows by the same
-  payload. Net effect: control-plane and CPU-worker nodes carry ~38 MB less
-  RAM-resident image; GPU nodes are unchanged overall.
+- Base extension is ~198 MB → **~156 MB**: ~38 MB is the SNP-experimental QEMU
+  + datadir moving to the add-on, plus ~2 MB of unreferenced OVMF blobs
+  (`OVMF.fd`, `OVMF.inteltdx.fd`) dropped outright. The add-on grows only by the
+  moved QEMU. Net effect: control-plane and CPU-worker nodes carry ~42 MB less
+  RAM-resident image; GPU nodes are ~2 MB lighter (the dropped OVMF).
 
 ### Breaking changes in v1.3.0
 

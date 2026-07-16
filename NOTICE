@@ -59,6 +59,7 @@ Source availability
 
 The GPLv2 components above are redistributed unmodified from their upstream
 release artifacts. Corresponding source is available from the upstream projects
-at the URLs listed, at the exact versions pinned in this repository
-(KATA_VERSION in the Makefile and both Dockerfiles, which fixes the release
-tarball, and hence every binary taken from it).
+at the URLs listed, at the exact versions pinned in this repository. Most are
+taken from the kata-static release tarball, fixed by KATA_VERSION (+ its
+sha256) in the Makefile and both Dockerfiles; BusyBox is pinned separately via
+`FROM busybox:1.36.1-musl` in extensions/coco-nvidia/Dockerfile.

@@ -1,7 +1,7 @@
 version: v1alpha1
 metadata:
   name: coco-kata-nvidia-gpu
-  version: 1.5.0
+  version: 1.5.1
   author: CoCo Extension (custom)
   description: |
     NVIDIA GPU add-on (Kata Containers 3.32.0) for the Talos CoCo extension
@@ -18,12 +18,14 @@ metadata:
     only handler that names it — the base's handlers run on the standard
     QEMU.
     Requires the base coco-kata-containers extension from the SAME
-    release (>= 1.5.0, same Kata version — guest assets must match the
+    release (>= 1.5.1, same Kata version — guest assets must match the
     base's shim) on the same node (provides AMDSEV.fd OVMF firmware,
     virtiofsd, and the statically linked Kata shim) AND a Talos
-    kernel with CONFIG_IOMMUFD=y +
+    kernel with CONFIG_IOMMUFD (=y or =m) +
     CONFIG_VFIO_DEVICE_CDEV=y (custom kernel — confidential guests require
-    the VFIO IOMMUFD cdev interface; no stock Talos kernel enables it).
+    the VFIO IOMMUFD cdev interface; no released Talos kernel enables it
+    yet, though both pieces merged to siderolabs main as of 2026-07-15:
+    pkgs#1608 as =m, talos#13765 for the rootfs allowlist).
     GPU prerequisite: Confidential Computing mode ON (persistent per-GPU
     setting via NVIDIA gpu-admin-tools).
   compatibility:

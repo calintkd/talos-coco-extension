@@ -6,10 +6,10 @@ computing. Product-level overview, quick start, and RuntimeClasses live in the
 
 ## Runtime handlers
 
-| Runtime Handler      | Use Case                  | Hypervisor              | Confidential   |
-| -------------------- | ------------------------- | ----------------------- | -------------- |
-| `kata-qemu-snp`      | AMD SEV-SNP production    | QEMU (SNP-experimental) | ✅             |
-| `kata-qemu-coco-dev` | CoCo dev/test (no TEE HW) | QEMU                    | ✅ (simulated) |
+| Runtime Handler      | Use Case                  | Hypervisor        | Confidential   |
+| -------------------- | ------------------------- | ----------------- | -------------- |
+| `kata-qemu-snp`      | AMD SEV-SNP production    | QEMU (standard)   | ✅             |
+| `kata-qemu-coco-dev` | CoCo dev/test (no TEE HW) | QEMU (standard)   | ✅ (simulated) |
 
 Every handler here is confidential. Non-confidential Cloud Hypervisor Kata is
 deliberately out of scope — the official `siderolabs/kata-containers` extension
@@ -51,9 +51,13 @@ Manual build (context = this directory):
 ```bash
 docker buildx build --platform linux/amd64 \
   --build-arg KATA_VERSION=3.32.0 \
-  -f extensions/coco/Dockerfile \
+  -f extensions/coco/Dockerfile --target extension \
   -t ghcr.io/<org>/talos-coco-extension:v<VERSION> --push extensions/coco/
 ```
+
+`--target extension` is required: the final Dockerfile stage is `verify` (a
+build-time self-check), so without it buildx would build and push that stage
+instead of the extension. `make base` sets it for you.
 
 ## Extension contents
 

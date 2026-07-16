@@ -4,22 +4,23 @@
 # Two-stage Dockerfile:
 #   1. Downloads + extracts the official kata-static release tarball and
 #      rewrites /opt/kata/ paths → /usr/local/ (byte-identical steps to the
-#      base extension's Stage 1 → Docker layer cache shares the ~3 GB
+#      base extension's Stage 1 → Docker layer cache shares the ~1.5 GB
 #      download between the two builds)
-#   2. Assembles the add-on extension (FROM scratch) with ONLY the NVIDIA
-#      bits: GPU+SNP Kata config, NVIDIA guest kernel, NVIDIA confidential
-#      guest image (~533 MiB in Kata 3.32.0 — Ubuntu noble + driver + NVRC;
-#      was ~1.1 GB in the 3.30.0 tarball)
+#   2. Assembles the add-on extension (FROM scratch) with the NVIDIA bits
+#      (GPU+SNP Kata config, NVIDIA guest kernel, NVIDIA confidential guest
+#      image ~533 MiB in Kata 3.32.0 — Ubuntu noble + driver + NVRC; was
+#      ~1.1 GB in the 3.30.0 tarball) AND, since 1.5.0, the SNP-experimental
+#      QEMU + its datadir (the GPU config is the only thing that names it).
 #
-# Everything else (QEMU SNP-experimental, virtiofsd, shim, OVMF AMDSEV.fd)
-# comes from the BASE extension — this add-on requires coco-kata-containers
-# from the SAME release (same version, same Kata) on the same node.
+# virtiofsd, the Kata shim, and OVMF AMDSEV.fd come from the BASE extension —
+# this add-on requires coco-kata-containers from the SAME release (same
+# version, same Kata) on the same node.
 #
 # Build (preferred): `make nvidia` from the repo root.
 # Manual (context = this directory):
 #   docker buildx build --platform linux/amd64 \
 #     --build-arg KATA_VERSION=3.32.0 \
-#     -f extensions/coco-nvidia/Dockerfile \
+#     -f extensions/coco-nvidia/Dockerfile --target extension \
 #     -t ghcr.io/<org>/talos-coco-nvidia:v<VERSION> --push extensions/coco-nvidia/
 # =============================================================================
 

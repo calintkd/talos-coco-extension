@@ -10,7 +10,6 @@
 
 # Build artifacts (one dir per imager target — they must not share an output
 # path: a second target would clobber a tar a `crane push` is still reading)
-/_out/
 /_out-cpu/
 /_out-gpu/
 /_out-iso/

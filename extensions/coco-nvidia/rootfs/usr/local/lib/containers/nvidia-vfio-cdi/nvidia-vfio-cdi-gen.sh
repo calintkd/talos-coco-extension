@@ -10,14 +10,18 @@
 # group node (/dev/vfio/<group>) makes Kata pick the legacy VFIO group
 # backend and fail confidential guests with
 # "ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>".
-# Requires a host kernel with CONFIG_IOMMUFD=y + CONFIG_VFIO_DEVICE_CDEV=y
-# (custom Talos kernel — see the add-on README).
+# Requires a host kernel with CONFIG_IOMMUFD (=y or =m) +
+# CONFIG_VFIO_DEVICE_CDEV=y. No released Talos kernel enables it yet; both
+# landed on siderolabs main (pkgs#1608 as =m, talos#13765). See the add-on
+# README.
 #
-# Device names registered per GPU (all resolve to the same cdev) match what
-# the nvidia-sandbox-device-plugin (P_GPU_ALIAS=pgpu) may request:
-#   - the cdev name  (vfio0)   <- the plugin's device ID
-#   - the IOMMU group (73)
-#   - a running index (0)
+# Each GPU is registered under ONE CDI device name: its cdev (vfio0, vfio1,
+# …) — the exact ID the nvidia-sandbox-device-plugin (P_GPU_ALIAS=pgpu)
+# requests. Earlier revisions also aliased the IOMMU-group id and a running
+# index, but those live in different namespaces than the cdev, and flattening
+# all three into CDI's single device-name space with a first-wins dedup could
+# resolve a request to the WRONG GPU on a multi-GPU node. The cdev is already
+# unique per device, so one name is correct and unambiguous.
 #
 # Exit 1 (-> service retry) until at least one vfio-bound NVIDIA GPU exists.
 set -u
@@ -40,14 +44,23 @@ DRV_DIR=/sys/bus/pci/drivers/vfio-pci
 # Base-extension dependency guard (host /usr/local is bind-mounted ro).
 # Talos extensions cannot declare dependencies on each other — this is the
 # loud, runtime end of the pairing contract (build end: `make check-versions`).
-BASE_QEMU=/usr/local/bin/qemu-system-x86_64-snp-experimental
-if ! [ -e "$BASE_QEMU" ]; then
+#
+# Check files the base provides and this add-on does NOT: the Kata shim,
+# virtiofsd, and the SNP OVMF firmware (the GPU config's virtio_fs_daemon +
+# firmware paths resolve here). The SNP-experimental QEMU is NOT a valid
+# marker — since v1.5.0 this add-on ships that itself.
+for f in \
+  /usr/local/bin/containerd-shim-kata-v2 \
+  /usr/local/libexec/virtiofsd \
+  /usr/local/share/ovmf/AMDSEV.fd
+do
+  [ -e "$f" ] && continue
   echo "ERROR: base extension coco-kata-containers is not installed on this node"
-  echo "       ($BASE_QEMU missing). Install the base extension from the SAME"
-  echo "       release as this add-on — kata-qemu-nvidia-gpu-snp pods cannot"
-  echo "       start without it."
+  echo "       ($f missing). Install the base extension from the SAME release"
+  echo "       as this add-on — kata-qemu-nvidia-gpu-snp pods cannot start"
+  echo "       without it."
   exit 1
-fi
+done
 
 [ -d "$DRV_DIR" ] || { echo "vfio-pci driver not present yet"; exit 1; }
 
@@ -61,8 +74,6 @@ TMP=$OUT_DIR/.nvidia-vfio.tmp.$$
 } > "$TMP"
 
 count=0
-idx=0
-SEEN=" "
 for dev in "$DRV_DIR"/*:*:*.*; do
   [ -e "$dev" ] || continue
   bdf=$(basename "$dev")
@@ -73,25 +84,15 @@ for dev in "$DRV_DIR"/*:*:*.*; do
   cdev=$(ls "$dev/vfio-dev" 2>/dev/null | head -n 1)
   [ -n "$cdev" ] || { echo "$bdf: no vfio-dev cdev (kernel lacks IOMMUFD/CDEV?)"; continue; }
 
-  group=$(basename "$(readlink "$dev/iommu_group" 2>/dev/null)" 2>/dev/null)
+  {
+    echo "  - name: \"$cdev\""
+    echo "    containerEdits:"
+    echo "      deviceNodes:"
+    echo "        - path: /dev/vfio/devices/$cdev"
+  } >> "$TMP"
 
-  # CDI device names must be unique across the whole spec — dedup (e.g. a
-  # GPU in IOMMU group 0 would collide with another GPU's index 0).
-  for name in "$cdev" "$group" "$idx"; do
-    [ -n "$name" ] || continue
-    case "$SEEN" in *" $name "*) continue ;; esac
-    SEEN="$SEEN$name "
-    {
-      echo "  - name: \"$name\""
-      echo "    containerEdits:"
-      echo "      deviceNodes:"
-      echo "        - path: /dev/vfio/devices/$cdev"
-    } >> "$TMP"
-  done
-
-  echo "$bdf -> cdev=$cdev group=$group idx=$idx"
+  echo "$bdf -> cdev=$cdev"
   count=$((count + 1))
-  idx=$((idx + 1))
 done
 
 if [ "$count" -eq 0 ]; then

@@ -3,7 +3,8 @@
 # restart: untilSuccess -> retries until the GPU is bound to vfio-pci
 # (machine.kernel.modules vfio_pci ids=... happens early in boot), then exits.
 # Also guards the base-extension dependency: the script fails loudly if the
-# base extension's SNP QEMU is absent from /usr/local/bin.
+# base-provided files (containerd-shim-kata-v2, virtiofsd, AMDSEV.fd) are
+# absent from /usr/local — the runtime end of the base<->add-on pairing.
 #
 # Container rootfs = /usr/local/lib/containers/nvidia-vfio-cdi (Talos derives
 # it from `name`); entrypoint/args paths are relative to that root.
@@ -26,8 +27,9 @@ container:
       options:
         - rbind
         - rw
-    # Host /usr/local (ro) — for the base-extension presence check. The
-    # mount SOURCE must be /usr/local (not /usr/local/bin): /usr/local is
+    # Host /usr/local (ro) — for the base-extension presence check (the
+    # guard reads base-provided files under it). The mount SOURCE must be
+    # /usr/local (not /usr/local/bin): /usr/local is
     # guaranteed to exist wherever this service is loaded (this very spec
     # file is installed under it), while /usr/local/bin only exists when
     # an extension ships files there — and machined pre-creates missing

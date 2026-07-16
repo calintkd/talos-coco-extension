@@ -32,8 +32,10 @@ KATA_VERSION  ?= 3.32.0
 TALOS_VERSION ?= v1.13.5
 
 # GPU workers need a custom imager whose install artifacts carry the
-# CONFIG_IOMMUFD=y + CONFIG_VFIO_DEVICE_CDEV=y kernel (no stock Talos kernel
-# enables it — see extensions/coco-nvidia/README.md "Custom Talos kernel").
+# CONFIG_IOMMUFD (=y or =m) + CONFIG_VFIO_DEVICE_CDEV=y kernel (no released
+# Talos kernel enables it yet — both merged to siderolabs main 2026-07-15,
+# pkgs#1608 as =m + talos#13765; see coco-nvidia/README.md "Custom Talos
+# kernel"). Drop this once a Talos release carries iommufd.
 GPU_IMAGER    ?= $(REGISTRY)/$(USERNAME)/imager:$(TALOS_VERSION)
 
 # Parse metadata.version out of each manifest. Anchored to the `metadata:`

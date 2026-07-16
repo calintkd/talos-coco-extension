@@ -9,12 +9,14 @@
 # default). It is safe to apply on any cluster, including clusters without
 # SNP or GPU nodes: each class carries a scheduling.nodeSelector, so pods
 # requesting a class the cluster can't satisfy stay Pending instead of
-# crashing. Node labels come from patches/machine-config-*.yaml.
+# crashing. Node labels come from patches/machine-config-*.yaml, EXCEPT
+# nvidia.com/cc.ready.state, which is set by hand as the last step of the
+# GPU CC-mode procedure (see the kata-qemu-nvidia-gpu-snp block below).
 #
 # | Class                    | Requires node labels                          |
 # |--------------------------|-----------------------------------------------|
 # | kata-qemu-snp            | kata-runtime + snp                            |
-# | kata-qemu-nvidia-gpu-snp | kata-runtime + snp + gpu vm-passthrough       |
+# | kata-qemu-nvidia-gpu-snp | kata-runtime + snp + gpu vm-passthrough + cc.ready.state |
 # | kata-qemu-coco-dev       | kata-runtime                                  |
 #
 # Overhead semantics (matters for capacity planning):
@@ -60,8 +62,10 @@ metadata:
 handler: kata-qemu-snp
 overhead:
   podFixed:
-    # default_memory 2048Mi is fully pinned host RAM for SNP guests; cpu
-    # covers the vCPU + QEMU/virtiofsd threads. Matches upstream kata-deploy.
+    # default_memory 2048Mi is fully pinned host RAM for SNP guests; cpu = the
+    # single guest vCPU (default_vcpus = 1). QEMU/virtiofsd host threads are
+    # NOT separately accounted — same zero-margin caveat as the memory note
+    # above. Values match upstream kata-deploy.
     memory: "2Gi"
     cpu: "1"
 scheduling:

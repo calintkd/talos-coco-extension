@@ -141,7 +141,7 @@ RUN go mod download
 # The Makefile defaults to -buildmode=pie which creates a dynamically linked PIE
 # binary (requires /lib64/ld-linux-x86-64.so.2 which doesn't exist on Talos).
 # Using -buildmode=exe produces a truly static, self-contained binary.
-# -mod=mod (not vendor): since Kata 3.32.0 the runtime's vendor/modules.txt is
+# -mod=mod (not vendor): as of Kata 3.32.0 the runtime's vendor/modules.txt is
 # out of sync with go.mod ("explicitly required in go.mod, but not marked as
 # explicit in vendor/modules.txt") — modules come from `go mod download`
 # above, integrity enforced by go.sum.
@@ -297,7 +297,7 @@ RUN set -eu; \
   for f in $(find /rootfs/usr/local -type f -o -type l | sort); do \
     p="${f#/rootfs}"; \
     case "$p" in \
-      */share/kata-qemu/*|*/share/kata-qemu-snp-experimental/*) \
+      */share/kata-qemu/*) \
         continue ;; \
       */share/kata-containers/configuration-*.toml) \
         continue ;; \
@@ -314,10 +314,6 @@ RUN set -eu; \
 # Allowlist reasons (check 3):
 #   share/kata-qemu/**            QEMU's datadir, resolved by a compiled-in
 #                                 path, never named by a config key
-#   share/kata-qemu-snp-experimental/**
-#                                 same, for the add-on's binary (not shipped
-#                                 by this extension; the pattern is kept so the
-#                                 same check can be reused verbatim)
 #   configuration-*.toml          the configs themselves
 #   bin/containerd-shim-kata-v2   containerd resolves it from runtime_type
 #                                 io.containerd.kata.v2, not from a path

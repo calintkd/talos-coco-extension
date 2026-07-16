@@ -13,7 +13,7 @@
 # (published artifacts are immutable — bump the version instead; ghcr itself
 # offers no tag immutability, so that check is the only guard).
 #
-# Disk note: the nvidia image is ~1.7 GB uncompressed and its build stage
+# Disk note: the nvidia image is ~0.9 GB uncompressed and its build stage
 # extracts the ~1.5 GB kata-static tarball — the free-disk-space step keeps
 # the default GitHub runner (~14 GB free) out of trouble.
 name: build
