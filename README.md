@@ -192,7 +192,6 @@ extensions/coco-nvidia/     # NVIDIA GPU add-on (+ CDI extension service)
 deploy/runtime-classes.yaml # all three RuntimeClasses — apply once per cluster
 deploy/gpu-operator-values-talos.yaml
 patches/                    # machine-config patches per node role
-docs/                       # upstream proposals, design notes
 Makefile                    # build/push/installer/check-versions entrypoints
 ```
 
