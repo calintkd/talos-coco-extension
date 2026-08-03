@@ -7,11 +7,12 @@ full **AMD SEV-SNP** support, and optional **NVIDIA GPU passthrough into the
 encrypted guest** (driver + NVRC run inside the CVM; the host never loads a GPU
 driver).
 
-Both extensions run on AMD EPYC (Turin) with SEV-SNP under Talos v1.13.5 and
-Kata 3.32.0. On that hardware the base extension boots SNP guests; the GPU
-add-on (NVIDIA H200 NVL) additionally gives in-guest `nvidia-smi` with GPU
-Confidential Computing mode active, CUDA workloads, and vLLM-class inference
-with the container image pulled inside the guest.
+Both extensions are validated on AMD EPYC (Turin) with SEV-SNP and Kata
+3.32.0 (the GPU add-on needs Talos >= v1.13.7, the first release whose stock
+kernel ships IOMMUFD). On that hardware the base extension boots SNP guests;
+the GPU add-on (NVIDIA H200 NVL) additionally gives in-guest `nvidia-smi`
+with GPU Confidential Computing mode active, CUDA workloads, and vLLM-class
+inference with the container image pulled inside the guest.
 
 ## What's in the box
 
@@ -63,7 +64,7 @@ here they are set deterministically via `machine.nodeLabels` (see `patches/`).
 | Role | Extensions | Installer | Extra requirements |
 | --- | --- | --- | --- |
 | Control plane / CPU worker | base | `make installer-cpu` (stock imager) | SEV-SNP BIOS settings for SNP-capable workers |
-| GPU worker | base + nvidia | `make installer-gpu` (custom imager) | Custom IOMMUFD kernel, GPU CC mode ON, VFIO machine config — see [extensions/coco-nvidia/README.md](extensions/coco-nvidia/README.md) |
+| GPU worker | base + nvidia | `make installer-gpu` (stock imager) | Talos >= v1.13.7 (stock kernel ships IOMMUFD), GPU CC mode ON, VFIO machine config — see [extensions/coco-nvidia/README.md](extensions/coco-nvidia/README.md) |
 
 ## Quick start
 
@@ -76,7 +77,7 @@ make images PUSH=true
 
 # 2. Build the installer for the node role (each target writes its own dir)
 make installer-cpu        # control planes / CPU workers  -> _out-cpu/
-make installer-gpu        # GPU workers (needs the custom IOMMUFD imager) -> _out-gpu/
+make installer-gpu        # GPU workers -> _out-gpu/
 crane push _out-gpu/installer-amd64.tar ghcr.io/<org>/talos-installer:<tag>
 
 # 3. Generate machine config with the matching patch
@@ -116,8 +117,8 @@ spec:
 
 Deep dives: [extensions/coco/README.md](extensions/coco/README.md) (design
 decisions, SEV-SNP attestation walkthrough, troubleshooting) and
-[extensions/coco-nvidia/README.md](extensions/coco-nvidia/README.md) (custom
-kernel, GPU CC mode, CDI service, guest sizing).
+[extensions/coco-nvidia/README.md](extensions/coco-nvidia/README.md)
+(IOMMUFD requirement, GPU CC mode, CDI service, guest sizing).
 
 ## Upgrading
 
@@ -125,8 +126,8 @@ kernel, GPU CC mode, CDI service, guest sizing).
   bump both manifest versions (lockstep), `make check-versions images PUSH=true`,
   rebuild installers, roll nodes one at a time with `talosctl upgrade --preserve`.
 - **New Talos release**: rebuild the extensions unchanged, build installers with
-  the new imager (`TALOS_VERSION=...`); GPU workers additionally need the custom
-  kernel + imager rebuilt for that Talos release first.
+  the new imager (`TALOS_VERSION=...`). GPU workers need Talos >= v1.13.7
+  (first stock kernel with IOMMUFD).
 - Never upgrade more than one node at a time; keep etcd quorum.
 
 ### Changes in v1.6.0

@@ -62,40 +62,17 @@ resolve to the base extension's `/usr/local/share/ovmf/AMDSEV.fd` and
 
 ## Host requirements (hard prerequisites)
 
-### 1. Custom Talos kernel with IOMMUFD
+### 1. Talos >= v1.13.7 (stock kernel ships IOMMUFD)
 
 Confidential guests require the VFIO **IOMMUFD cdev** interface
 (`/dev/vfio/devices/vfioN`) — the Kata runtime refuses the legacy group node with
 `ConfidentialGuest needs IOMMUFD - cannot use /dev/vfio/<group>`
-(`virtcontainers/qemu.go`). **No released Talos kernel through v1.13.6 enables
-IOMMUFD** — but both pieces have merged to siderolabs `main`
-([pkgs#1608](https://github.com/siderolabs/pkgs/pull/1608) as `IOMMUFD=m`,
-[talos#13765](https://github.com/siderolabs/talos/pull/13765) adding
-`iommufd.ko` to the rootfs allowlist), so a stock Talos will carry it from
-v1.14. Until then, build a custom kernel with two config changes on
-`siderolabs/pkgs` — check out the `PKGS` ref pinned in the Talos release's
-Makefile (e.g. Talos v1.13.5 pins `v1.13.0-36-g6b315f7`; there is no
-per-patch-release pkgs tag):
-
-```
-CONFIG_IOMMUFD=m           # =y or =m both work; upstream shipped =m. As a
-                           # module it auto-loads via depmod as a vfio dep —
-                           # no machine.kernel.modules entry needed.
-CONFIG_VFIO_DEVICE_CDEV=y
-```
-
-```bash
-# 1. kernel (in siderolabs/pkgs, config edited, then):
-make kernel REGISTRY=ghcr.io USERNAME=<org> PUSH=true PLATFORM=linux/amd64
-# 2. imager carrying that kernel (in siderolabs/talos at the matching tag).
-#    NOTE: the kernel lives in the IMAGER's install artifacts — building
-#    installer-base with PKG_KERNEL is NOT sufficient (it has no kernel).
-make imager PKG_KERNEL=ghcr.io/<org>/kernel:<tag> \
-  INSTALLER_ARCH=amd64 PLATFORM=linux/amd64 PUSH=true REGISTRY=ghcr.io USERNAME=<org>
-```
-
-Build tip: the Talos kernel uses ThinLTO — cap the builder's CPUs (e.g.
-`--cpuset-cpus=0-31`) or the `vmlinux.o` link can OOM on many-core hosts.
+(`virtcontainers/qemu.go`). Stock Talos ships both requirements from
+**v1.13.7** (backported) and v1.14+: `CONFIG_IOMMUFD=m`
+([pkgs#1608](https://github.com/siderolabs/pkgs/pull/1608)) — as a module it
+auto-loads via depmod as a vfio dependency, no `machine.kernel.modules`
+entry needed — and `iommufd.ko` in the rootfs allowlist
+([talos#13765](https://github.com/siderolabs/talos/pull/13765)).
 
 Verify on the node after upgrade: `/proc/config.gz` shows `CONFIG_IOMMUFD` (`=y`
 or `=m`) and `CONFIG_VFIO_DEVICE_CDEV=y`, and
@@ -142,19 +119,15 @@ build-time `verify` self-check, not the extension. `make nvidia` sets it.
 ## Installer composition (per node role)
 
 ```bash
-make installer-gpu     # GPU worker — custom IOMMUFD imager + base + add-on
-make installer-cpu     # CP / CPU worker — base only, stock imager/kernel
+make installer-gpu     # GPU worker — stock imager + base + add-on
+make installer-cpu     # CP / CPU worker — base only
 ```
-
-> The custom imager image (`GPU_IMAGER`) must be pullable by your Docker
-> daemon — make the package public or `docker login` to its registry first.
 
 Equivalent manual GPU-worker invocation:
 
 ```bash
 docker run --rm -t -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/_out-gpu:/out \
-  ghcr.io/<your-org>/imager:<talos-version> installer --arch amd64 \
-  --base-installer-image ghcr.io/siderolabs/installer-base:<talos-version> \
+  ghcr.io/siderolabs/imager:<talos-version> installer --arch amd64 \
   --system-extension-image ghcr.io/<your-org>/talos-coco-extension:v<VERSION> \
   --system-extension-image ghcr.io/<your-org>/talos-coco-nvidia:v<VERSION>
 ```

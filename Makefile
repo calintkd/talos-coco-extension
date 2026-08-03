@@ -11,7 +11,7 @@
 # Common flows:
 #   make images PUSH=true          # build + push both extensions
 #   make installer-cpu             # CP / CPU-worker installer (stock imager)
-#   make installer-gpu             # GPU-worker installer (custom IOMMUFD imager)
+#   make installer-gpu             # GPU-worker installer (stock imager)
 #   make iso                       # bare-metal install ISO (base extension)
 #   make check-versions            # consistency gate (run by CI)
 # =============================================================================
@@ -25,18 +25,11 @@ PUSH          ?= false
 # ARG default — enforced by check-versions).
 KATA_VERSION  ?= 3.32.0
 
-# Talos release used for installer/ISO composition. Pinned to the newest
-# release for which the custom GPU imager exists (installer-gpu needs
-# $(GPU_IMAGER) at this tag) — bump only after rebuilding kernel + imager
-# for the new Talos release.
-TALOS_VERSION ?= v1.13.5
-
-# GPU workers need a custom imager whose install artifacts carry the
-# CONFIG_IOMMUFD (=y or =m) + CONFIG_VFIO_DEVICE_CDEV=y kernel (no released
-# Talos kernel enables it; it is enabled upstream and will ship in a future
-# Talos release — see coco-nvidia/README.md "Custom Talos kernel"). Drop this
-# once a Talos release carries iommufd.
-GPU_IMAGER    ?= $(REGISTRY)/$(USERNAME)/imager:$(TALOS_VERSION)
+# Talos release used for installer/ISO composition. v1.13.7 is the first
+# release whose stock kernel ships CONFIG_IOMMUFD (=m) +
+# CONFIG_VFIO_DEVICE_CDEV=y (backported; v1.14+ has them too) — the GPU
+# worker requires both, so do not pin below v1.13.7.
+TALOS_VERSION ?= v1.13.7
 
 # Parse metadata.version out of each manifest. Anchored to the `metadata:`
 # block and to a semver-shaped value: an unanchored "first version: that isn't
@@ -138,8 +131,7 @@ installer-gpu: check-versions
 	mkdir -p _out-gpu && rm -f _out-gpu/installer-amd64.tar
 	docker run --rm -t \
 	  -v $(PWD)/_out-gpu:/out \
-	  $(GPU_IMAGER) installer --arch amd64 \
-	  --base-installer-image ghcr.io/siderolabs/installer-base:$(TALOS_VERSION) \
+	  ghcr.io/siderolabs/imager:$(TALOS_VERSION) installer --arch amd64 \
 	  --system-extension-image $(BASE_IMG) \
 	  --system-extension-image $(NVIDIA_IMG)
 	@echo "Push with: crane push _out-gpu/installer-amd64.tar $(GPU_INSTALLER)"
